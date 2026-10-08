@@ -1,15 +1,9 @@
 import type { Models } from './db';
-import type { Client } from './llm';
-import type ChatService from './services/chat';
+import type { Services } from './services';
 
 export type Context = {
-    clients: {
-        AI: Client,
-    },
-    services: {
-        Chat: ChatService,
-    },
     models: Models;
+    services: Services;
 };
 
 export default Context;

@@ -21,7 +21,7 @@ export interface ConversationDocument {
 }
 
 export interface ConversationMethods {
-    toData(): ConversationData;
+    toData({ unreadMessagesCount }: { unreadMessagesCount: number }): ConversationData;
 }
 
 export interface ConversationVirtuals {
@@ -53,7 +53,6 @@ ConversationSchema.virtual('lastMessage', {
         sort: { createdAt: 1 }
     }
 });
-
 
 ConversationSchema.method<ConversationDocument & ConversationVirtuals>('toData', function ({
     unreadMessagesCount = 0

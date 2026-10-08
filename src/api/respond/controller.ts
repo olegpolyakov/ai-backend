@@ -1,20 +1,21 @@
 import type { Request, Response } from 'express';
 
-import type { Message } from '@/clients/client';
+import type { JsonSchema } from '@olegpolyakov/core/utils/schema';
+
 import type Context from '@/context';
 
-export default ({ clients: { AI } }: Context) => ({
+export default ({ services: { AI } }: Context) => ({
     async respond(req: Request, res: Response) {
-        // const userId = (req as { userId: string }).userId;
-
         const {
-            messages,
+            prompt,
             model = 'gemma4:31b-cloud',
-            stream = false
+            stream = false,
+            format
         } = req.body as {
-            messages: Message[];
+            prompt: string;
             model: string;
             stream: boolean;
+            format?: 'json' | JsonSchema;
         };
 
         try {
@@ -40,14 +41,15 @@ export default ({ clients: { AI } }: Context) => ({
             } else {
                 res.setHeader('Content-Type', 'application/json');
 
-                const response = await AI.respond(messages, {
-                    model
+                const response = await AI.respond(req.userId!, prompt, {
+                    model,
+                    format
                 });
 
-                return res.send(response.message);
+                return res.send({ ok: true, data: response });
             }
         } catch (error) {
-            console.error('AI stream error:', error);
+            console.error('AI error:', error);
 
             if (!res.headersSent) {
                 res.status(500).json({ error: 'Failed to process request' });

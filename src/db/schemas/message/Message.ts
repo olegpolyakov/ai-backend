@@ -4,7 +4,7 @@ export type MessageData = {
     id: string;
     conversationId: string;
     content: string;
-    role: 'system' | 'user' | 'assistant' | 'tool';
+    role: 'system' | 'user' | 'assistant';
     metadata?: Record<string, unknown>;
     tokenCount?: number;
     createdAt: string;
@@ -23,11 +23,7 @@ export interface MessageMethods {
 
 export type MessageModel = Model<MessageDocument, unknown, MessageMethods>;
 
-export const MessageSchema = new Schema<
-    MessageDocument,
-    MessageModel,
-    MessageMethods
->({
+export const MessageSchema = new Schema<MessageDocument, MessageModel, MessageMethods>({
     conversationId: { type: Types.UUID, required: true, index: true, immutable: true },
     content: { type: String, default: '' },
     role: {

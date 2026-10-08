@@ -2,13 +2,11 @@ import { auth } from '@olegpolyakov/backend/features/auth';
 import Server from '@olegpolyakov/backend/server';
 import Ws from '@olegpolyakov/backend/server/ws';
 
-// import Ws from '@olegpolyakov/backend/server/ws';
 import Api from './api';
 import type Context from './context';
 import Db from './db';
 import DbChanges from './db/changes';
-import { Ollama } from './llm';
-import type ChatService from './services/chat';
+import Services from './services';
 
 const {
     DOMAIN = '',
@@ -16,22 +14,18 @@ const {
     PORT = 3000,
     DB_CONNECTION_STRING = '',
     COOKIE_SECRET = '',
-    JWT_SECRET = '',
-    OLLAMA_API_KEY = ''
+    JWT_SECRET = ''
 } = process.env;
 
-const db = Db(DB_CONNECTION_STRING, { debug: true });
-
+const db = Db(DB_CONNECTION_STRING, { debug: false });
 await db.connect();
 
+const models = db.models;
+const services = await Services(models);
+
 const context: Context = {
-    clients: {
-        AI: Ollama(OLLAMA_API_KEY)
-    },
-    models: db.models,
-    services: {
-        Chat: {} as ChatService
-    }
+    models,
+    services
 };
 
 Server({

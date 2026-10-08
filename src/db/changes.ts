@@ -16,10 +16,11 @@ export default ({ models: { Conversation, Message } }: Context) => (wss: WebSock
         const changeStream = model.watch(pipeline, options); 
 
         changeStream.on('change', event => {
+            const documentId = event.documentKey._id.toString();
             const payload = JSON.stringify({
                 model: model.modelName,
                 action: event.operationType,
-                documentId: event.documentKey._id,
+                documentId,
                 data: event.fullDocument
             });
 
@@ -29,8 +30,8 @@ export default ({ models: { Conversation, Message } }: Context) => (wss: WebSock
                 if (client.readyState !== WebSocket.OPEN) return;
 
                 if (model.modelName === 'Message') {
-                    const conversationId = event.fullDocument.conversationId;
-                    const conversation = await Conversation.findOne({ _id: conversationId, userId });
+                    const message = await Message.findOne({ _id: documentId });
+                    const conversation = await Conversation.findOne({ _id: message?.get('conversationId'), userId });
 
                     if (!conversation) return;
 
@@ -38,8 +39,7 @@ export default ({ models: { Conversation, Message } }: Context) => (wss: WebSock
                 }
 
                 if (model.modelName === 'Conversation') {
-                    const conversationId = event.fullDocument._id;
-                    const conversation = await Conversation.findOne({ _id: conversationId, userId });
+                    const conversation = await Conversation.findOne({ _id: documentId, userId });
 
                     if (!conversation) return;
 

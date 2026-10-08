@@ -12,6 +12,10 @@ export default (context: Context) => {
         .get(controller.get)
         .post(controller.create);
 
+    router.route('/:conversationId')
+        .patch(controller.update)
+        .delete(controller.delete);
+
     router.route('/:conversationId/view')
         .patch(controller.view);
 
