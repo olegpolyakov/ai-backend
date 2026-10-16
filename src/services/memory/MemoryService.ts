@@ -1,12 +1,10 @@
-import ollama from 'ollama';
-
 import type { AIClient } from '@olegpolyakov/backend/features/ai';
 import { array, integer, JsonSchema, object, string } from '@olegpolyakov/core/utils/schema';
 
-import type { Models } from '@/db';
-import type { MemoryData } from '@/db/schemas/memory';
+import type { Context } from '@/context';
+import type { MemoryData } from '@/schemas/memory';
 
-const TOP_K = 5;
+const TOP_K = 5; // Number of top relevant memories to return
 const MAX_IMPORTANCE = 10;
 
 const MEMORY_EXTRACTION_PROMPT = `
@@ -41,7 +39,8 @@ const MEMORY_EXTRACTION_SCHEMA = object('Memory extraction schema', {
 export default class MemoryService {
     constructor(
         private AI: AIClient,
-        private Memory: Models['Memory']
+        private Embed: Context['services']['Embed'],
+        private Memory: Context['models']['Memory']
     ) {}
 
     async getPreferences(userId: string): Promise<MemoryData[]> {
@@ -60,17 +59,17 @@ export default class MemoryService {
         return memories.map(m => m.toData());
     }
 
-    async getRelevantMemories(userId: string, query: string) {
+    async getRelevantMemories(userId: string, query: string, topK: number = TOP_K) {
         if (!query) return [];
 
         const memories = await this.getMemories(userId);
 
         if (memories.length === 0) return [];
 
-        const queryEmbedding = await this.embed(query);
+        const [queryEmbedding] = await this.Embed.embed(query);
 
         if (queryEmbedding.length === 0)
-            return memories.slice(0, TOP_K);
+            return memories.slice(0, topK);
          
         return memories
             .map(memory => ({
@@ -78,7 +77,7 @@ export default class MemoryService {
                 similarity: cosineSimilarity(queryEmbedding, memory.embedding)
             }))
             .sort((a, b) => score(b) - score(a)) 
-            .slice(0, TOP_K);
+            .slice(0, topK);
     }
 
     async extractMemories(userId: string, content: string): Promise<MemoryData[]> {
@@ -110,7 +109,7 @@ export default class MemoryService {
 
         if (extracted.length === 0) return [];
 
-        const embeddings = await this.embedMany(extracted.map(m => m.content));
+        const embeddings = await this.Embed.embed(extracted.map(m => m.content));
 
         const created: MemoryData[] = [];
 
@@ -127,20 +126,6 @@ export default class MemoryService {
         }
 
         return created;
-    }
-
-    async embed(input: string): Promise<number[]> {
-        return (await this.embedMany([input]))[0] ?? [];
-    }
-
-    async embedMany(input: string[]): Promise<number[][]> {
-        try {
-            const result = await ollama.embed({ model: 'embeddinggemma', input });
-            return result.embeddings;
-        } catch (error) {
-            console.error('Failed to embed input:', error);
-            return input.map(() => []);
-        }
     }
 
     getPrompt(prefix: string, memories: MemoryData[]): string {
