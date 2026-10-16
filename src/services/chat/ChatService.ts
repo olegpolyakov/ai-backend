@@ -2,7 +2,7 @@ import type { AIClient, Message } from '@olegpolyakov/backend/features/ai';
 import { NotFoundError } from '@olegpolyakov/backend/server';
 import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 
-import type { Models } from '@/db';
+import type { Context } from '@/context';
 
 import type MemoryService from '../memory';
 
@@ -13,8 +13,8 @@ const MEMORY_TIMEOUT_MS = 400;
 export default class ChatService {
     constructor(
         private AI: AIClient,
-        private Conversation: Models['Conversation'],
-        private Message: Models['Message'],
+        private Conversation: Context['models']['Conversation'],
+        private Message: Context['models']['Message'],
         private Memory: MemoryService
     ) {}
 
