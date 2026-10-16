@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 
 import type { JsonSchema } from '@olegpolyakov/core/utils/schema';
 
-import type Context from '@/context';
+import type { Context } from '@/context';
 
 export default ({ services: { AI } }: Context) => ({
     async respond(req: Request, res: Response) {

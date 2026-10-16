@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import type Context from '@/context';
+import type { Context } from '@/context';
 
 import Controller from './controller';
 
