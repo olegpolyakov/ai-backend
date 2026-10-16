@@ -3,6 +3,7 @@ import { type NextFunction, type Request, type Response, Router } from 'express'
 import type { Context } from '@/context';
 
 import conversations from './conversations'; 
+import embed from './embed';
 import memories from './memories';
 import respond from './respond';
 
@@ -10,6 +11,7 @@ export default (context: Context) => {
     const router = Router();
 
     router.use('/conversations', conversations(context));
+    router.use('/embed', embed(context));
     router.use('/memories', memories(context));
     router.use('/respond', respond(context));
 
