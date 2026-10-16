@@ -1,14 +1,15 @@
-# syntax=docker/dockerfile:1.7
 FROM node:25-alpine
-WORKDIR /auth
-COPY package*.json ./
-COPY api/package*.json ./api/
-COPY core/package*.json ./core/
-COPY db/package*.json ./db/
-COPY core/src ./core/src
-COPY db/src ./db/src
-RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm install
-RUN npm link
-RUN npm link @olegpolyakov/auth --workspace=api
+
+WORKDIR /code
+
+COPY .npmrc package*.json ./
+
+RUN --mount=type=secret,id=GHP_TOKEN,env=GHP_TOKEN \
+    npm config set //npm.pkg.github.com/:_authToken=$GHP_TOKEN && \
+    npm ci --include=dev
+
 COPY . .
-CMD ["npm", "run", "start", "--workspace", "api"]
+
+EXPOSE $PORT
+
+CMD ["npm", "start"]
