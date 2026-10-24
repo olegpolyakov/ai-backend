@@ -8,7 +8,7 @@ export default ({
     models: { Conversation, Message },
     services: { Chat }
 }: Context) => ({
-    async get(req: Request, res: Response) {
+    async list(req: Request, res: Response) {
         const conversations = await Conversation
             .find({ userId: req.userId })
             .sort({ lastMessageAt: -1 })
@@ -43,17 +43,6 @@ export default ({
         res.json({ ok: true, data: conversation });
     },
 
-    async view(req: Request<{ conversationId: string }>, res: Response) {
-        await Conversation.updateOne(
-            {
-                _id: req.params.conversationId,
-                userId: req.userId
-            },
-            { viewedAt: new Date() }
-        );
-
-        res.json({ ok: true });
-    },
 
     async update(req: Request<{ conversationId: string }>, res: Response) {
         const { conversationId } = req.params;
@@ -88,6 +77,18 @@ export default ({
         await Message.deleteMany({
             conversationId: req.params.conversationId
         });
+
+        res.json({ ok: true });
+    },
+
+    async view(req: Request<{ conversationId: string }>, res: Response) {
+        await Conversation.updateOne(
+            {
+                _id: req.params.conversationId,
+                userId: req.userId
+            },
+            { viewedAt: new Date() }
+        );
 
         res.json({ ok: true });
     },

@@ -9,7 +9,7 @@ export default (context: Context) => {
     const controller = Controller(context);
 
     router.route('/')
-        .get(controller.get)
+        .get(controller.list)
         .post(controller.create);
 
     router.route('/:conversationId')
