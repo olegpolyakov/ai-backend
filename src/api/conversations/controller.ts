@@ -46,9 +46,9 @@ export default ({
 
     async update(req: Request<{ conversationId: string }>, res: Response) {
         const { conversationId } = req.params;
-        const { title, description } = req.body;
+        const { title, description, model } = req.body;
 
-        if (!title && !description) {
+        if (!title && !description && !model) {
             return res.status(400).json({
                 ok: false,
                 message: 'No fields to update'
@@ -60,7 +60,7 @@ export default ({
                 _id: conversationId,
                 userId: req.userId
             },
-            { title, description }
+            { title, description, model }
         );
 
         if (!conversation) throw new NotFoundError('Conversation not found');

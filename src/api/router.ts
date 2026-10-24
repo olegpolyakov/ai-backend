@@ -5,6 +5,7 @@ import type { Context } from '@/context';
 import conversations from './conversations'; 
 import embed from './embed';
 import memories from './memories';
+import models from './models';
 import respond from './respond';
 
 export default (context: Context) => {
@@ -13,6 +14,7 @@ export default (context: Context) => {
     router.use('/conversations', conversations(context));
     router.use('/embed', embed(context));
     router.use('/memories', memories(context));
+    router.use('/models', models(context));
     router.use('/respond', respond(context));
 
     router.use((error: Error & { code?: number; status?: number }, req: Request, res: Response, next: NextFunction) => {

@@ -12,6 +12,10 @@ export default class AIService {
         private Memory: MemoryService
     ) {}
 
+    async getModels() {
+        return this.AI.getModels();
+    }
+
     async respond(
         userId: string,
         prompt: string,

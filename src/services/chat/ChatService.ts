@@ -19,7 +19,7 @@ export default class ChatService {
     ) {}
 
     async sendMessage(userId: string, conversationId: string, content: string): Promise<Message> {
-        const conversation = await this.Conversation.exists({
+        const conversation = await this.Conversation.findOne({
             _id: conversationId,
             userId
         });
@@ -51,7 +51,7 @@ export default class ChatService {
                     .map(({ role, content }) => ({ role, content }))
                     .toReversed(),
                 userMessage
-            ]);
+            ], { model: conversation.model });
         } finally {
             // The user's message is kept even when the AI call fails
             await userMessagePromise;
@@ -63,9 +63,9 @@ export default class ChatService {
             content: response.message.content
         });
 
-        void this.Memory.extractMemories(userId, content).catch(error => {
-            console.error('Memory extraction failed:', error);
-        });
+        // void this.Memory.extractMemories(userId, content).catch(error => {
+        //     console.error('Memory extraction failed:', error);
+        // });
 
         return response.message;
     }

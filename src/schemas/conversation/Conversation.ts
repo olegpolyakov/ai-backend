@@ -7,6 +7,7 @@ export type ConversationData = {
     userId: string;
     title: string;
     description: string;
+    model?: string;
     viewedAt?: string;
     lastMessage?: Pick<MessageData, 'content' | 'createdAt'>;
     unreadMessagesCount: number;
@@ -17,6 +18,7 @@ export interface ConversationDocument {
     userId: Types.UUID;
     title: string;
     description: string;
+    model?: string;
     viewedAt?: Date;
 }
 
@@ -34,6 +36,7 @@ export const ConversationSchema = new Schema<ConversationDocument, ConversationM
     userId: { type: Types.UUID, required: true },
     title: { type: String, required: true },
     description: { type: String, default: '' },
+    model: { type: String },
     viewedAt: { type: Date }
 }, {
     timestamps: false
@@ -50,7 +53,7 @@ ConversationSchema.virtual('lastMessage', {
     foreignField: 'conversationId',
     justOne: true,
     options: {
-        sort: { createdAt: 1 }
+        sort: { createdAt: -1 }
     }
 });
 
@@ -63,6 +66,7 @@ ConversationSchema.method<ConversationDocument & ConversationVirtuals>('toData',
         id: this.id,
         title: this.title,
         description: this.description,
+        model: this.model,
         lastMessage: this.lastMessage,
         userId: this.userId,
         unreadMessagesCount
