@@ -1,10 +1,10 @@
-import type { AIClient } from '@olegpolyakov/backend/features/ai';
+import { OllamaClient, OpenAIClient } from '@olegpolyakov/backend/features/ai';
+import { EmbedService, OpenAIEmbedClient } from '@olegpolyakov/backend/features/embed';
 
 import type { Context } from '@/context';
 
 import AIService from './ai';
 import ChatService from './chat';
-import EmbedService from './embed';
 import MemoryService from './memory';
 
 export type Services = {
@@ -14,11 +14,33 @@ export type Services = {
     Embed: EmbedService
 };
 
-export default (client: AIClient, { Conversation, Message, Memory }: Context['models']) => {
-    const embedService = new EmbedService();
-    const memoryService = new MemoryService(client, embedService, Memory);
-    const aiService = new AIService(client, memoryService);
-    const chatService = new ChatService(client, Conversation, Message, memoryService);
+export { AIService, ChatService, MemoryService };
+
+const {
+    OLLAMA_API_KEY = '',
+    OPENAI_API_KEY = '',
+    OPENAI_API_URL = ''
+} = process.env;
+
+export default ({ Conversation, Message, Memory }: Context['models']) => {
+    const embedClient = new OpenAIEmbedClient({
+        apiKey: OPENAI_API_KEY,
+        baseURL: OPENAI_API_URL,
+        model: 'dashscope/text-embedding-v4'
+    });
+    const ollamaClient = new OllamaClient({
+        apiKey: OLLAMA_API_KEY,
+        model: 'gemma4:31b-cloud'
+    });
+    const openAIClient = new OpenAIClient({
+        apiKey: OPENAI_API_KEY,
+        baseURL: OPENAI_API_URL
+    });
+
+    const embedService = new EmbedService(embedClient);
+    const memoryService = new MemoryService(openAIClient, embedService, Memory);
+    const aiService = new AIService(openAIClient, memoryService);
+    const chatService = new ChatService(openAIClient, Conversation, Message, memoryService);
 
     return {
         AI: aiService,

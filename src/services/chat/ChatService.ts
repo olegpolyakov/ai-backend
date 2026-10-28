@@ -1,6 +1,5 @@
 import type { AIClient, Message } from '@olegpolyakov/backend/features/ai';
 import { NotFoundError } from '@olegpolyakov/backend/server';
-import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 
 import type { Context } from '@/context';
 
@@ -8,7 +7,6 @@ import type MemoryService from '../memory';
 
 const SYSTEM_PROMPT = 'You are an AI assistant. Respond to the user messages based on the conversation history and memories.';
 const HISTORY_LIMIT = 25;
-const MEMORY_TIMEOUT_MS = 400;
     
 export default class ChatService {
     constructor(
@@ -36,36 +34,34 @@ export default class ChatService {
             this.buildSystemMessage(userId, content)
         ]);
 
-        const userMessage: Message = { role: 'user', content };
-        const userMessagePromise = this.Message.create({
+        const userMessage = await this.Message.create({
             conversationId,
-            ...userMessage
+            role: 'user',
+            content
         });
 
-        let response;
+        const response = await this.AI.respond([
+            systemMessage,
+            ...history
+                .map(({ role, content }) => ({ role, content }))
+                .toReversed(),
+            userMessage
+        ], { model: conversation.model });
 
-        try {
-            response = await this.AI.respond([
-                systemMessage,
-                ...history
-                    .map(({ role, content }) => ({ role, content }))
-                    .toReversed(),
-                userMessage
-            ], { model: conversation.model });
-        } finally {
-            // The user's message is kept even when the AI call fails
-            await userMessagePromise;
-        }
-
-        await this.Message.create({
+        const assistantMessage = await this.Message.create({
             conversationId,
             role: 'assistant',
             content: response.message.content
         });
 
-        // void this.Memory.extractMemories(userId, content).catch(error => {
-        //     console.error('Memory extraction failed:', error);
-        // });
+        void this.Memory.extractMemories(
+            userId,
+            content,
+            conversation.model,
+            [userMessage.id, assistantMessage.id]
+        ).catch(error => {
+            console.error('Memory extraction failed:', error);
+        });
 
         return response.message;
     }
@@ -73,8 +69,10 @@ export default class ChatService {
     private async buildSystemMessage(userId: string, content: string): Promise<Message> {
         const [preferences, relevant] = await Promise.all([
             this.Memory.getPreferences(userId),
-            withTimeout(this.Memory.getRelevantMemories(userId, content), MEMORY_TIMEOUT_MS, [])
+            this.Memory.getRelevantMemories(userId, content)
         ]);
+
+        void this.Memory.markReferenced(relevant.map(m => m.id));
 
         return {
             role: 'system',
