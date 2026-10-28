@@ -1,1 +1,0 @@
-export { default, type MemoryData } from './Memory';

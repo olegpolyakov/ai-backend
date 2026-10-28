@@ -1,4 +1,4 @@
-import { type Model, Schema, Types } from 'mongoose';
+import { Model, Schema, Types } from 'mongoose';
 
 import type { MessageData, MessageDocument } from '../message';
 

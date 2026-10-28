@@ -1,10 +1,12 @@
-import { type Model, Schema, Types } from 'mongoose';
+import { Model, Schema, Types } from 'mongoose';
+
+export type MessageRole = 'system' | 'user' | 'assistant' ;
 
 export type MessageData = {
     id: string;
     conversationId: string;
     content: string;
-    role: 'system' | 'user' | 'assistant';
+    role: MessageRole;
     metadata?: Record<string, unknown>;
     tokenCount?: number;
     createdAt: string;
@@ -23,17 +25,14 @@ export interface MessageMethods {
 
 export type MessageModel = Model<MessageDocument, unknown, MessageMethods>;
 
+export const MESSAGES_ROLES = ['system', 'user', 'assistant'];
+
 export const MessageSchema = new Schema<MessageDocument, MessageModel, MessageMethods>({
     conversationId: { type: Types.UUID, required: true, index: true, immutable: true },
     content: { type: String, default: '' },
     role: {
         type: String,
-        enum: [
-            'system',
-            'user',
-            'assistant',
-            'tool'
-        ],
+        enum: MESSAGES_ROLES,
         required: true
     },
     metadata: { type: Schema.Types.Mixed },

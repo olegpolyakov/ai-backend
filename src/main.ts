@@ -1,6 +1,5 @@
 import Db from '@olegpolyakov/backend/db';
 import Changes from '@olegpolyakov/backend/db/changes';
-import { OllamaClient, OpenAIClient } from '@olegpolyakov/backend/features/ai';
 import { auth } from '@olegpolyakov/backend/features/auth';
 import Server from '@olegpolyakov/backend/server';
 import Ws from '@olegpolyakov/backend/server/ws';
@@ -8,7 +7,7 @@ import Ws from '@olegpolyakov/backend/server/ws';
 import Api from './api';
 import ChangeHandler from './changes';
 import Context from './context';
-import * as schemas from './schemas';
+import Models from './models';
 import Services from './services';
 
 const {
@@ -17,25 +16,12 @@ const {
     PORT = 3000,
     DB_URL = '',
     COOKIE_SECRET = '',
-    JWT_SECRET = '',
-    OLLAMA_API_KEY = '',
-    OPENAI_API_KEY = '',
-    OPENAI_API_URL = ''
+    JWT_SECRET = ''
 } = process.env;
 
-const ollamaClient = new OllamaClient({
-    apiKey: OLLAMA_API_KEY,
-    model: 'gemma4:31b-cloud'
-});
-const openAIClient = new OpenAIClient({
-    apiKey: OPENAI_API_KEY,
-    baseURL: OPENAI_API_URL
-});
-
-const { models } = await Db(DB_URL, schemas, { debug: false }).connect();
-
-const services = Services(openAIClient, models);
-
+const db = await Db(DB_URL, { debug: false }).connect();
+const models = Models(db);
+const services = Services(models);
 const context = Context({
     models,
     services

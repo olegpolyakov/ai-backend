@@ -1,9 +1,11 @@
 import { Model, Schema, Types } from 'mongoose';
 
+export type MemoryType = 'preference' | 'goal' | 'project' | 'skill' | 'fact' | 'relationship';
+
 export type MemoryData = {
     id: string;
     userId: string;
-    type: 'preference' | 'goal' | 'project' | 'skill' | 'fact' | 'relationship';
+    type: MemoryType;
     content: string;
     embedding: number[];
     importance: number;
@@ -14,7 +16,7 @@ export type MemoryData = {
 
 export interface MemoryDocument extends Omit<MemoryData, 'userId' | 'sourceMessageIds' | 'lastReferencedAt'> {
     userId: Types.UUID;
-    sourceMessageIds: Types.ObjectId[];
+    sourceMessageIds: Types.UUID[];
     lastReferencedAt?: Date;
 }
 
@@ -24,7 +26,9 @@ export interface MemoryMethods {
 
 export type MemoryModel = Model<MemoryDocument, unknown, MemoryMethods>;
 
-const MemorySchema = new Schema<MemoryDocument, MemoryModel, MemoryMethods>({
+export const MEMORY_TYPES = ['preference', 'goal', 'project', 'skill', 'fact', 'relationship'] as const;
+
+export const MemorySchema = new Schema<MemoryDocument, MemoryModel, MemoryMethods>({
     userId: {
         type: Schema.Types.UUID,
         required: true,
@@ -32,19 +36,13 @@ const MemorySchema = new Schema<MemoryDocument, MemoryModel, MemoryMethods>({
     },
     type: {
         type: String,
-        enum: [
-            'preference',
-            'goal',
-            'project',
-            'skill',
-            'fact',
-            'relationship'
-        ],
+        enum: MEMORY_TYPES,
         required: true
     },
     content: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     embedding: {
         type: [Number],
@@ -52,20 +50,17 @@ const MemorySchema = new Schema<MemoryDocument, MemoryModel, MemoryMethods>({
     },
     importance: {
         type: Number,
+        default: 5,
         min: 1,
-        max: 10,
-        default: 5
+        max: 10
     },
     confidence: {
         type: Number,
-        default: 1
+        default: 1,
+        max: 1,
+        min: 0
     },
-    sourceMessageIds: [
-        {
-            type: Schema.Types.ObjectId,
-            ref: 'Message'
-        }
-    ],
+    sourceMessageIds: [Schema.Types.UUID],
     lastReferencedAt: Date
 }, {
     timestamps: true
@@ -90,14 +85,14 @@ MemorySchema.index({
 
 MemorySchema.method('toData', function() {
     return {
-        id: this.id,
-        userId: this.userId,
+        id: this.id.toString(),
+        userId: this.userId.toString(),
         type: this.type,
         content: this.content,
         embedding: this.embedding,
         importance: this.importance,
         confidence: this.confidence,
-        sourceMessageIds: this.sourceMessageIds,
+        sourceMessageIds: this.sourceMessageIds.map(id => id.toString()),
         lastReferencedAt: this.lastReferencedAt?.toISOString()
     };
 });
