@@ -4,7 +4,7 @@ import { ConversationSchema as Conversation } from './conversation';
 import { MemorySchema as Memory } from './memory';
 import { MessageSchema as Message } from './message';
 
-export const schemas = {
+const schemas = {
     Conversation,
     Memory,
     Message

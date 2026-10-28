@@ -1,10 +1,10 @@
 import type { AIClient, Message, RespondOptions } from '@olegpolyakov/backend/features/ai';
 import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 
-import type MemoryService from '../memory';
+import type MemoryService from './memory';
 
 const SYSTEM_PROMPT = 'You are an AI assistant. Respond to the user prompt based on the user preferences and relevant memories.';
-const MEMORY_TIMEOUT_MS = 400;
+const MEMORY_TIMEOUT_MS = 1000;
     
 export default class AIService {
     constructor(

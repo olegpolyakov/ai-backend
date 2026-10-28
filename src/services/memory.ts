@@ -1,10 +1,10 @@
 import { QueryFilter } from 'mongoose';
 
 import type { AIClient } from '@olegpolyakov/backend/features/ai';
+import type { EmbedService } from '@olegpolyakov/backend/features/embed';
 import { array, integer, JsonSchema, object, string } from '@olegpolyakov/core/utils/schema';
 
-import type { Context } from '@/context';
-import { MEMORY_TYPES, MemoryData, MemoryType } from '@/models';
+import { MEMORY_TYPES, MemoryData, MemoryModel, MemoryType } from '@/models';
 
 const TOP_K = 5;
 const MAX_IMPORTANCE = 10;
@@ -50,8 +50,8 @@ type ExtractedMemory = Pick<MemoryData, 'type' | 'content' | 'importance' | 'con
 export default class MemoryService {
     constructor(
         private AI: AIClient,
-        private Embed: Context['services']['Embed'],
-        private Memory: Context['models']['Memory']
+        private Embed: EmbedService,
+        private Memory: MemoryModel
     ) {}
 
     async getPreferences(userId: string): Promise<MemoryData[]> {

@@ -1,9 +1,9 @@
 import type { AIClient, Message } from '@olegpolyakov/backend/features/ai';
 import { NotFoundError } from '@olegpolyakov/backend/server';
 
-import type { Context } from '@/context';
+import type { ConversationModel, MessageModel } from '@/models';
 
-import type MemoryService from '../memory';
+import type MemoryService from './memory';
 
 const SYSTEM_PROMPT = 'You are an AI assistant. Respond to the user messages based on the conversation history and memories.';
 const HISTORY_LIMIT = 25;
@@ -11,8 +11,8 @@ const HISTORY_LIMIT = 25;
 export default class ChatService {
     constructor(
         private AI: AIClient,
-        private Conversation: Context['models']['Conversation'],
-        private Message: Context['models']['Message'],
+        private Conversation: ConversationModel,
+        private Message: MessageModel,
         private Memory: MemoryService
     ) {}
 

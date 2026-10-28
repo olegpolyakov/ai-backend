@@ -1,4 +1,4 @@
-import Context from '@olegpolyakov/backend/context';
+import createContext from '@olegpolyakov/backend/context';
 
 import type { Models } from './models';
 import type { Services } from './services';
@@ -8,4 +8,4 @@ export type Context = {
     services: Services;
 };
 
-export default (value: Context) => Context<Context>(value);
+export default (value: Context) => createContext<Context>(value);

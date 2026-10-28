@@ -1,7 +1,7 @@
 import { OllamaClient, OpenAIClient } from '@olegpolyakov/backend/features/ai';
 import { EmbedService, OpenAIEmbedClient } from '@olegpolyakov/backend/features/embed';
 
-import type { Context } from '@/context';
+import type { Models } from '@/models';
 
 import AIService from './ai';
 import ChatService from './chat';
@@ -14,15 +14,13 @@ export type Services = {
     Embed: EmbedService
 };
 
-export { AIService, ChatService, MemoryService };
-
 const {
     OLLAMA_API_KEY = '',
     OPENAI_API_KEY = '',
     OPENAI_API_URL = ''
 } = process.env;
 
-export default ({ Conversation, Message, Memory }: Context['models']) => {
+export default ({ Conversation, Message, Memory }: Models) => {
     const embedClient = new OpenAIEmbedClient({
         apiKey: OPENAI_API_KEY,
         baseURL: OPENAI_API_URL,

@@ -1,6 +1,6 @@
 import { Model, Schema, Types } from 'mongoose';
 
-import type { MessageData, MessageDocument } from '../message';
+import type { MessageData, MessageDocument } from './message';
 
 export type ConversationData = {
     id: string;

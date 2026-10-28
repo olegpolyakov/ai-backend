@@ -19,7 +19,7 @@ const {
     JWT_SECRET = ''
 } = process.env;
 
-const db = await Db(DB_URL, { debug: false }).connect();
+const db = await Db(DB_URL).connect();
 const models = Models(db);
 const services = Services(models);
 const context = Context({

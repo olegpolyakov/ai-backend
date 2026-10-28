@@ -1,4 +1,4 @@
-export { default, schemas, type Models } from './module';
+export { default, type Models } from './mod';
 export * from './conversation';
 export * from './memory';
 export * from './message';
