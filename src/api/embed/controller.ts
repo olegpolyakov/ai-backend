@@ -1,8 +1,8 @@
-import type { Request, Response } from 'express';
+import type { Request, Response } from '@olegpolyakov/backend/server';
 
 import type { Context } from '@/context';
 
-export default ({ services: { AI } }: Context) => ({
+export default ({ services: { Embed } }: Context) => ({
     async embed(req: Request, res: Response) {
         const {
             input,
@@ -21,9 +21,12 @@ export default ({ services: { AI } }: Context) => ({
         }
 
         try {
-            const embedding = await AI.embed(input, { model });
+            const embedding = await Embed.embed(input, model);
 
-            return res.send({ ok: true, data: embedding });
+            return res.send({
+                ok: true,
+                data: embedding
+            });
         } catch (error) {
             console.error('AI error:', error);
 

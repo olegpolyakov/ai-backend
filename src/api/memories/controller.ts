@@ -1,18 +1,20 @@
-import type { Request, Response } from 'express';
+import type { Request, Response } from '@olegpolyakov/backend/server';
 
 import type { Context } from '@/context';
 
 export default ({
-    models: { Memory }
+    models: { Memory },
+    services: { Embed }
 }: Context) => ({
     async get(req: Request, res: Response) {
         const memories = await Memory
             .find({ userId: req.userId })
             .sort({ importance: -1 });
 
-        const data = memories.map(memory => memory.toJSON());
-
-        res.json({ ok: true, data });
+        res.json({
+            ok: true,
+            data: memories.map(memory => memory.toJSON())
+        });
     },
 
     async create(req: Request, res: Response) {
@@ -21,19 +23,34 @@ export default ({
             userId: req.userId
         });
 
-        res.json({ ok: true, data: memory });
+        res.json({
+            ok: true,
+            data: memory
+        });
     },
 
-    async update(req: Request<{ memoryId: string }>, res: Response) {
-        if (!req.body?.content) {
-            return res.status(400).json({ ok: false, message: 'Content is empty' });
+    async update(req: Request<{ memoryId: string }, unknown, { content: string }>, res: Response) {
+        const content = req.body.content?.trim() ?? '';
+
+        if (!content) {
+            return res.status(400).json({
+                ok: false,
+                message: 'Content is empty'
+            });
+        }
+
+        const [embedding] = await Embed.embed(content);
+
+        if (!embedding) {
+            throw new Error('Failed to generate memory embedding');
         }
 
         const memory = await Memory.update({
             _id: req.params.memoryId,
             userId: req.userId
         }, {
-            content: req.body.content?.trim() ?? ''
+            content,
+            embedding
         });
 
         if (!memory) {
@@ -53,12 +70,15 @@ export default ({
         });
 
         if (!memory) {
-            return res.status(404).json({ ok: false, message: 'Memory not found' });
+            return res.status(404).json({
+                ok: false,
+                message: 'Memory not found'
+            });
         }
 
         res.json({
             ok: true,
-            data: { id: memory._id }
+            data: { id: memory.id }
         });
     }
 });

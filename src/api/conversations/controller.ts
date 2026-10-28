@@ -1,6 +1,4 @@
-import type { Request, Response } from 'express';
-
-import { NotFoundError } from '@olegpolyakov/backend/server';
+import { NotFoundError, Request, Response } from '@olegpolyakov/backend/server';
 
 import type { Context } from '@/context';
 
