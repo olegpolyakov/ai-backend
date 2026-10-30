@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AIClient } from '@olegpolyakov/backend/features/ai';
+import type { FileService } from '@olegpolyakov/backend/features/files';
 import { NotFoundError } from '@olegpolyakov/backend/server';
 import { useDb } from '@olegpolyakov/backend/test/mocks/db';
 import { useModel } from '@olegpolyakov/backend/test/mocks/models';
@@ -10,6 +11,18 @@ import { ChatService, MemoryService } from '@/services';
 
 const USER_ID = '123e4567-e89b-12d3-a456-426614174000';
 const OTHER_USER_ID = '123e4567-e89b-12d3-a456-426614174001';
+const IMAGE_REF = {
+    kind: 'entity',
+    type: 'file',
+    id: 'image-123',
+    mimeType: 'image/png'
+} as const;
+const DOCUMENT_REF = {
+    kind: 'entity',
+    type: 'file',
+    id: 'document-456',
+    mimeType: 'application/pdf'
+} as const;
 
 describe('ChatService', () => {
     const db = useDb();
@@ -22,19 +35,29 @@ describe('ChatService', () => {
     const embedService = {
         embed: vi.fn()
     };
+    const fileService = {
+        getUrl: vi.fn<FileService['getUrl']>()
+    };
     let memoryService: MemoryService;
     let chatService: ChatService;
 
     beforeEach(() => {
         aiClient.respond.mockReset();
         embedService.embed.mockReset();
+        fileService.getUrl.mockReset();
 
         memoryService = new MemoryService(
             aiClient as unknown as AIClient,
             embedService as never,
             Memory
         );
-        chatService = new ChatService(aiClient as unknown as AIClient, Conversation, Message, memoryService);
+        chatService = new ChatService(
+            aiClient as unknown as AIClient,
+            Conversation,
+            Message,
+            memoryService,
+            fileService as unknown as FileService
+        );
     });
 
     it('throws a NotFoundError when the conversation does not belong to the user', async () => {
@@ -118,6 +141,59 @@ describe('ChatService', () => {
             'test-model',
             expect.arrayContaining([expect.any(String), expect.any(String)])
         );
+    });
+
+    it('resolves image and document references when building the AI input', async () => {
+        const conversation = await Conversation.create({
+            userId: USER_ID,
+            title: 'Attachments',
+            model: 'test-model'
+        });
+        await Message.create({
+            conversationId: conversation.id,
+            role: 'user',
+            content: 'See attached',
+            refs: [IMAGE_REF]
+        });
+        const extractMemories = vi.spyOn(memoryService, 'extractMemories').mockResolvedValue([]);
+        fileService.getUrl.mockImplementation(async fileId => `https://files.example/${fileId}`);
+        aiClient.respond.mockResolvedValue({
+            message: {
+                role: 'assistant',
+                content: 'I reviewed the attachments.'
+            }
+        });
+
+        await chatService.sendMessage(
+            USER_ID,
+            conversation.id.toString(),
+            'What is in this document?',
+            [DOCUMENT_REF]
+        );
+
+        const [messages] = aiClient.respond.mock.calls[0];
+        
+        expect(messages.at(-1)).toEqual({
+            role: 'user',
+            content: [
+                { type: 'text', content: 'What is in this document?' },
+                { type: 'file', url: 'https://files.example/document-456' }
+            ]
+        });
+        expect(messages.at(-2)).toEqual({
+            role: 'user',
+            content: [
+                { type: 'text', content: 'See attached' },
+                { type: 'image', url: 'https://files.example/image-123' }
+            ]
+        });
+        expect(fileService.getUrl).toHaveBeenNthCalledWith(1, 'image-123');
+        expect(fileService.getUrl).toHaveBeenNthCalledWith(2, 'document-456');
+        expect(await Message.findOne({ conversationId: conversation.id, content: 'What is in this document?' })).toMatchObject({
+            content: 'What is in this document?',
+            refs: [DOCUMENT_REF]
+        });
+        expect(extractMemories).toHaveBeenCalled();
     });
 });
 
