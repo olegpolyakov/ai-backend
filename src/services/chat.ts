@@ -1,7 +1,9 @@
-import type { AIClient, Message } from '@olegpolyakov/backend/features/ai';
+import type { AIClient, FileContent, ImageContent, Message, MessageContent, TextContent } from '@olegpolyakov/backend/features/ai';
+import type { FileService } from '@olegpolyakov/backend/features/files';
 import { NotFoundError } from '@olegpolyakov/backend/server';
+import { isFileEntityRef, Ref } from '@olegpolyakov/core/objects/ref';
 
-import type { ConversationModel, MessageModel } from '@/models';
+import type { ConversationModel, MessageDocument, MessageModel } from '@/models';
 
 import type MemoryService from './memory';
 
@@ -13,10 +15,16 @@ export default class ChatService {
         private AI: AIClient,
         private Conversation: ConversationModel,
         private Message: MessageModel,
-        private Memory: MemoryService
+        private Memory: MemoryService,
+        private File: FileService
     ) {}
 
-    async sendMessage(userId: string, conversationId: string, content: string): Promise<Message> {
+    async sendMessage(
+        userId: string,
+        conversationId: string,
+        content: string,
+        refs?: Ref[]
+    ): Promise<Message> {
         const conversation = await this.Conversation.findOne({
             _id: conversationId,
             userId
@@ -27,7 +35,7 @@ export default class ChatService {
         const [history, systemMessage] = await Promise.all([
             this.Message
                 .find({ conversationId })
-                .select('role content')
+                .select('role content refs')
                 .sort({ createdAt: -1 })
                 .limit(HISTORY_LIMIT - 1)
                 .lean(),
@@ -37,16 +45,21 @@ export default class ChatService {
         const userMessage = await this.Message.create({
             conversationId,
             role: 'user',
-            content
+            content,
+            refs
         });
 
-        const response = await this.AI.respond([
+        const input = [
             systemMessage,
-            ...history
-                .map(({ role, content }) => ({ role, content }))
-                .toReversed(),
-            userMessage
-        ], { model: conversation.model });
+            ...(await Promise.all(
+                history
+                    .toReversed()
+                    .concat(userMessage)
+                    .map(async message => this.buildMessage(message))
+            ))
+        ] as Message[];
+
+        const response = await this.AI.respond(input, { model: conversation.model });
 
         const assistantMessage = await this.Message.create({
             conversationId,
@@ -83,5 +96,47 @@ export default class ChatService {
                 this.Memory.getPrompt('Relevant memories', relevant)
             ].filter(Boolean).join('\n\n')
         };
+    }
+
+    private async buildMessage(message: MessageDocument): Promise<Message> {
+        if (!message.refs || message.refs.length === 0) return {
+            content: message.content,
+            role: message.role
+        };
+
+        const text: TextContent = {
+            type: 'text',
+            content: message.content
+        };
+        const content: MessageContent[] = await this.resolveRefs(message.refs);
+
+        return {
+            role: message.role,
+            content: [text, ...content]
+        };
+    }
+
+    private async resolveRefs(refs: Ref[]): Promise<MessageContent[]> {
+        const promises = refs.map(async ref => {
+            if (isFileEntityRef(ref)) {
+                const url = await this.File.getUrl(ref.id);
+
+                if (ref.mimeType.startsWith('image')) {
+                    return {
+                        type: 'image',
+                        url
+                    } as ImageContent;
+                } else {
+                    return {
+                        type: 'file',
+                        url
+                    } as FileContent;
+                }
+            }
+        });
+
+        const resolved = await Promise.all(promises);
+
+        return resolved.filter(i => !!i);
     }
 }

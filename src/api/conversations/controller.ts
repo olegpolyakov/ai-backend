@@ -1,10 +1,10 @@
-import { NotFoundError, Request, Response } from '@olegpolyakov/backend/server';
+import { BadRequestError, NotFoundError, Request, Response } from '@olegpolyakov/backend/server';
 
 import type { Context } from '@/context';
 
 export default ({
     models: { Conversation, Message },
-    services: { Chat }
+    services: { Chat, File }
 }: Context) => ({
     async list(req: Request, res: Response) {
         const conversations = await Conversation
@@ -21,6 +21,7 @@ export default ({
         const data = await Promise.all(conversations.map(async conversation => {
             const unreadMessagesCount = await Message.countDocuments({
                 conversationId: conversation.id,
+                role: 'assistant',
                 ...(conversation.viewedAt && {
                     createdAt: { $gt: conversation.viewedAt }
                 })
@@ -92,8 +93,10 @@ export default ({
     },
 
     async getMessages(req: Request<{ conversationId: string }>, res: Response) {
+        const { conversationId } = req.params;
+
         const messages = await Message
-            .find({ conversationId:  req.params.conversationId })
+            .find({ conversationId })
             .sort({ createdAt: 1 });
 
         const data = {
@@ -110,19 +113,26 @@ export default ({
     async createMessage(req: Request<{ conversationId: string }>, res: Response) {
         const userId = req.userId!;
         const { conversationId } = req.params;
-        const { content } = req.body;
+        const { content, refs } = req.body;
 
-        if (!content) {
-            return res.status(400).json({
-                ok: false,
-                message: 'Content is required'
-            });
-        }
+        if (!content && !refs) throw new BadRequestError(
+            'The message can not be empty'
+        );
+
+        File.setAccessToken(req.authToken!);
 
         try {
-            const message = await Chat.sendMessage(userId, conversationId, content);
+            const message = await Chat.sendMessage(
+                userId,
+                conversationId,
+                content,
+                refs
+            );
 
-            res.json({ ok: true, data: message });
+            res.json({
+                ok: true,
+                data: message
+            });
         } catch (error) {
             if (error instanceof NotFoundError) {
                 return res.status(404).json({

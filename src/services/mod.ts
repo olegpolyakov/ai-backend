@@ -1,5 +1,6 @@
 import { OllamaClient, OpenAIClient } from '@olegpolyakov/backend/features/ai';
 import { EmbedService, OpenAIEmbedClient } from '@olegpolyakov/backend/features/embed';
+import { FileService } from '@olegpolyakov/backend/features/files';
 
 import type { Models } from '@/models';
 
@@ -10,11 +11,13 @@ import MemoryService from './memory';
 export type Services = {
     AI: AIService,
     Chat: ChatService,
+    Embed: EmbedService,
+    File: FileService,
     Memory: MemoryService,
-    Embed: EmbedService
 };
 
 const {
+    FILES_API_URL = '',
     OLLAMA_API_KEY = '',
     OPENAI_API_KEY = '',
     OPENAI_API_URL = ''
@@ -35,15 +38,17 @@ export default ({ Conversation, Message, Memory }: Models) => {
         baseURL: OPENAI_API_URL
     });
 
+    const fileService = new FileService(FILES_API_URL);
     const embedService = new EmbedService(embedClient);
     const memoryService = new MemoryService(openAIClient, embedService, Memory);
     const aiService = new AIService(openAIClient, memoryService);
-    const chatService = new ChatService(openAIClient, Conversation, Message, memoryService);
+    const chatService = new ChatService(openAIClient, Conversation, Message, memoryService, fileService);
 
     return {
         AI: aiService,
         Chat: chatService,
         Embed: embedService,
+        File: fileService,
         Memory: memoryService
     };
 };

@@ -30,7 +30,7 @@ export interface ConversationVirtuals {
     lastMessage: MessageDocument;
 }
 
-export type ConversationModel = Model<ConversationDocument, object, ConversationMethods, ConversationVirtuals>;
+export type ConversationModel = Model<ConversationDocument, unknown, ConversationMethods, ConversationVirtuals>;
 
 export const ConversationSchema = new Schema<ConversationDocument, ConversationModel, ConversationMethods, ConversationVirtuals>({
     userId: { type: Types.UUID, required: true },

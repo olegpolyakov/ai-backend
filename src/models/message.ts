@@ -1,6 +1,9 @@
 import { Model, Schema, Types } from 'mongoose';
 
-export type MessageRole = 'system' | 'user' | 'assistant' ;
+import { RefSchema } from '@olegpolyakov/backend/db/schemas';
+import type { Ref } from '@olegpolyakov/core/objects/ref';
+
+export type MessageRole = 'system' | 'user' | 'assistant';
 
 export type MessageData = {
     id: string;
@@ -8,7 +11,7 @@ export type MessageData = {
     content: string;
     role: MessageRole;
     metadata?: Record<string, unknown>;
-    tokenCount?: number;
+    refs: Ref[];
     createdAt: string;
     updatedAt: string;
 };
@@ -28,15 +31,23 @@ export type MessageModel = Model<MessageDocument, unknown, MessageMethods>;
 export const MESSAGES_ROLES = ['system', 'user', 'assistant'];
 
 export const MessageSchema = new Schema<MessageDocument, MessageModel, MessageMethods>({
-    conversationId: { type: Types.UUID, required: true, index: true, immutable: true },
-    content: { type: String, default: '' },
+    conversationId: {
+        type: Types.UUID,
+        required: true,
+        index: true,
+        immutable: true
+    },
+    content: {
+        type: String,
+        default: ''
+    },
     role: {
         type: String,
         enum: MESSAGES_ROLES,
         required: true
     },
-    metadata: { type: Schema.Types.Mixed },
-    tokenCount: Number
+    refs: { type: [RefSchema] },
+    metadata: { type: Schema.Types.Mixed }
 }, {
     timestamps: true,
     toJSON: { virtuals: true },
@@ -54,8 +65,8 @@ MessageSchema.method('toData', function() {
         conversationId: this.conversationId.toString(),
         content: this.content,
         role: this.role,
+        refs: this.refs,
         metadata: this.metadata,
-        tokenCount: this.tokenCount,
         createdAt: this.createdAt.toISOString(),
         updatedAt: this.updatedAt.toISOString()
     };
