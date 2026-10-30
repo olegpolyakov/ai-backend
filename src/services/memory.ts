@@ -159,7 +159,7 @@ export default class MemoryService {
                         },
                         $addToSet: { sourceMessageIds: { $each: sourceMessageIds } }
                     },
-                    { new: true }
+                    { returnDocument: 'after' }
                 );
 
                 if (updatedMemory) {
