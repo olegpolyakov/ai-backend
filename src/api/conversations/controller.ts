@@ -130,9 +130,6 @@ export default ({
                 refs
             );
 
-            // TODO Find a better way to handle this, maybe by using a middleware to unset the access token for all requests
-            File.accessToken = undefined;
-
             res.json({
                 ok: true,
                 data: message
@@ -146,6 +143,9 @@ export default ({
             }
 
             throw error;
+        } finally {
+            // TODO Find a better way to handle this, maybe by using a middleware to unset the access token for all requests
+            File.accessToken = undefined;
         }
     },
 
