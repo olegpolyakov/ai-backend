@@ -24,7 +24,9 @@ export default (context: Context) => {
             return next(error);
         }
 
-        res.status(error.code || error.status || 500).send({
+        const status = Number(error.code) || Number(error.status) || 500;
+
+        res.status(status).send({
             error: error.message
         });
     });
