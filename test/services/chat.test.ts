@@ -15,13 +15,13 @@ const IMAGE_REF = {
     kind: 'entity',
     type: 'file',
     id: 'image-123',
-    mimeType: 'image/png'
+    mimeType: 'application/pdf'
 } as const;
 const DOCUMENT_REF = {
     kind: 'entity',
     type: 'file',
     id: 'document-456',
-    mimeType: 'application/pdf'
+    mimeType: 'image/png'
 } as const;
 
 describe('ChatService', () => {
@@ -36,6 +36,7 @@ describe('ChatService', () => {
         embed: vi.fn()
     };
     const fileService = {
+        get: vi.fn<FileService['get']>(),
         getUrl: vi.fn<FileService['getUrl']>()
     };
     let memoryService: MemoryService;
@@ -44,6 +45,7 @@ describe('ChatService', () => {
     beforeEach(() => {
         aiClient.respond.mockReset();
         embedService.embed.mockReset();
+        fileService.get.mockReset();
         fileService.getUrl.mockReset();
 
         memoryService = new MemoryService(
@@ -156,6 +158,14 @@ describe('ChatService', () => {
             refs: [IMAGE_REF]
         });
         const extractMemories = vi.spyOn(memoryService, 'extractMemories').mockResolvedValue([]);
+        fileService.get.mockImplementation(async fileId => ({
+            id: fileId,
+            name: fileId,
+            path: fileId,
+            hash: fileId,
+            type: fileId === 'image-123' ? 'image/png' : 'application/pdf',
+            size: 0
+        }));
         fileService.getUrl.mockImplementation(async fileId => `https://files.example/${fileId}`);
         aiClient.respond.mockResolvedValue({
             message: {
@@ -189,6 +199,8 @@ describe('ChatService', () => {
         });
         expect(fileService.getUrl).toHaveBeenNthCalledWith(1, 'image-123');
         expect(fileService.getUrl).toHaveBeenNthCalledWith(2, 'document-456');
+        expect(fileService.get).toHaveBeenNthCalledWith(1, 'image-123');
+        expect(fileService.get).toHaveBeenNthCalledWith(2, 'document-456');
         expect(await Message.findOne({ conversationId: conversation.id, content: 'What is in this document?' })).toMatchObject({
             content: 'What is in this document?',
             refs: [DOCUMENT_REF]

@@ -33,7 +33,7 @@ describe('Conversations API', () => {
         sendMessage: vi.fn<Context['services']['Chat']['sendMessage']>()
     };
     const fileService = {
-        setAccessToken: vi.fn<Context['services']['File']['setAccessToken']>()
+        accessToken: undefined as string | undefined
     };
     const context = {
         models: { Conversation, Message },
@@ -44,7 +44,7 @@ describe('Conversations API', () => {
 
     beforeEach(() => {
         chatService.sendMessage.mockReset();
-        fileService.setAccessToken.mockReset();
+        fileService.accessToken = undefined;
     });
 
     afterEach(() => {
@@ -231,7 +231,11 @@ describe('Conversations API', () => {
                 role: 'assistant' as MessageRole,
                 content: 'Hello!'
             };
-            chatService.sendMessage.mockResolvedValue(message);
+            chatService.sendMessage.mockImplementation(async () => {
+                expect(fileService.accessToken).toBe('test-token');
+
+                return message;
+            });
 
             const res = await agent
                 .post(`/${conversation.id}/messages`)
@@ -239,7 +243,7 @@ describe('Conversations API', () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.body).toEqual({ ok: true, data: message });
-            expect(fileService.setAccessToken).toHaveBeenCalledWith('test-token');
+            expect(fileService.accessToken).toBeUndefined();
             expect(chatService.sendMessage).toHaveBeenCalledWith(USER_ID, conversation.id, 'Hi!', undefined);
         });
 
@@ -289,6 +293,7 @@ describe('Conversations API', () => {
 
             expect(res.statusCode).toBe(404);
             expect(res.body).toEqual({ ok: false, message: 'Conversation not found' });
+            expect(fileService.accessToken).toBeUndefined();
         });
     });
 
