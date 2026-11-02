@@ -119,15 +119,19 @@ export default ({
             'The message can not be empty'
         );
 
-        File.setAccessToken(req.authToken!);
-
         try {
+            // TODO Find a better way to handle this, maybe by using a middleware to set the access token for all requests
+            File.accessToken = req.authToken;
+
             const message = await Chat.sendMessage(
                 userId,
                 conversationId,
                 content,
                 refs
             );
+
+            // TODO Find a better way to handle this, maybe by using a middleware to unset the access token for all requests
+            File.accessToken = undefined;
 
             res.json({
                 ok: true,

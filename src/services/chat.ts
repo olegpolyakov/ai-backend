@@ -1,7 +1,7 @@
 import type { AIClient, FileContent, ImageContent, Message, MessageContent, TextContent } from '@olegpolyakov/backend/features/ai';
 import type { FileService } from '@olegpolyakov/backend/features/files';
 import { NotFoundError } from '@olegpolyakov/backend/server';
-import { isFileEntityRef, Ref } from '@olegpolyakov/core/objects/ref';
+import { isEntityRef, Ref } from '@olegpolyakov/core/objects/ref';
 
 import type { ConversationModel, MessageDocument, MessageModel } from '@/models';
 
@@ -118,10 +118,11 @@ export default class ChatService {
 
     private async resolveRefs(refs: Ref[]): Promise<MessageContent[]> {
         const promises = refs.map(async ref => {
-            if (isFileEntityRef(ref)) {
+            if (isEntityRef(ref)) {
+                const file = await this.File.get(ref.id);
                 const url = await this.File.getUrl(ref.id);
 
-                if (ref.mimeType.startsWith('image')) {
+                if (file.type.startsWith('image')) {
                     return {
                         type: 'image',
                         url
