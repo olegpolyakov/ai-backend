@@ -1,4 +1,4 @@
-import type { AIClient, Message, RespondOptions } from '@olegpolyakov/backend/features/ai';
+import type { AIClient, Message, RespondOptions, Response } from '@olegpolyakov/backend/features/ai';
 import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 
 import type MemoryService from './memory';
@@ -18,18 +18,26 @@ export default class AIService {
 
     async respond(
         userId: string,
-        prompt: string,
+        input: string | Message[],
         options?: RespondOptions
-    ): Promise<string> {
-        const systemMessage = await this.buildSystemMessage(userId, prompt);
-        const userMessage: Message = { role: 'user', content: prompt };
+    ): Promise<Response> {
+        const messages = Array.isArray(input)
+            ? input
+            : [{ role: 'user', content: input }] as Message[];
+        const [userMessage, ...history] = messages.toReversed();
+        const textContent = Array.isArray(userMessage.content)
+            ? userMessage.content.find(item => item.type === 'text')?.content ?? ''
+            : userMessage.content;
+
+        const systemMessage = await this.buildSystemMessage(userId, textContent);
         
         const response = await this.AI.respond([
             systemMessage,
+            ...history,
             userMessage
         ], options);
 
-        return response.message.content;
+        return response;
     }
 
     private async buildSystemMessage(userId: string, content: string): Promise<Message> {
