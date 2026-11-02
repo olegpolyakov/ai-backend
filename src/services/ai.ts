@@ -24,7 +24,8 @@ export default class AIService {
         const messages = Array.isArray(input)
             ? input
             : [{ role: 'user', content: input }] as Message[];
-        const [userMessage, ...history] = messages.toReversed();
+        const userMessage = messages.at(-1)!;
+        const history = messages.slice(0, -1);
         const textContent = Array.isArray(userMessage.content)
             ? userMessage.content.find(item => item.type === 'text')?.content ?? ''
             : userMessage.content;
