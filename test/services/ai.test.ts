@@ -65,7 +65,12 @@ describe('AIService', () => {
             const options = { model: 'test-model' };
             const response = await aiService.respond(USER_ID, 'Say hello', options);
 
-            expect(response).toBe('Bonjour!');
+            expect(response).toEqual({
+                message: {
+                    role: 'assistant',
+                    content: 'Bonjour!'
+                }
+            });
             expect(embedService.embed).toHaveBeenCalledWith('Say hello');
             expect(aiClient.respond).toHaveBeenCalledWith([
                 {
@@ -91,7 +96,12 @@ describe('AIService', () => {
 
             const response = await aiService.respond(USER_ID, 'Say hello');
 
-            expect(response).toBe('Hello!');
+            expect(response).toEqual({
+                message: {
+                    role: 'assistant',
+                    content: 'Hello!'
+                }
+            });
             expect(embedService.embed).not.toHaveBeenCalled();
             expect(aiClient.respond).toHaveBeenCalledWith([
                 {
@@ -103,6 +113,38 @@ describe('AIService', () => {
                 },
                 { role: 'user', content: 'Say hello' }
             ], undefined);
+        });
+
+        it('preserves chronological history and uses the latest message content for memory lookup', async () => {
+            await Memory.create($({
+                type: 'fact',
+                content: 'Paris is a city',
+                embedding: [1, 0]
+            }));
+            embedService.embed.mockResolvedValue([[1, 0]]);
+            const response = {
+                message: {
+                    role: 'assistant' as const,
+                    content: 'Paris is lovely.'
+                }
+            };
+            aiClient.respond.mockResolvedValue(response);
+
+            const input = [
+                { role: 'user' as const, content: 'I want to travel.' },
+                { role: 'assistant' as const, content: 'Where would you like to go?' },
+                { role: 'user' as const, content: [
+                    { type: 'text' as const, content: 'Tell me about Paris.' },
+                    { type: 'image' as const, url: 'data:image/png;base64,aGVsbG8=' }
+                ] }
+            ];
+            const result = await aiService.respond(USER_ID, input);
+
+            expect(result).toBe(response);
+            expect(embedService.embed).toHaveBeenCalledWith('Tell me about Paris.');
+            expect(aiClient.respond).toHaveBeenCalledOnce();
+            expect(aiClient.respond.mock.calls[0][0].slice(1)).toEqual(input);
+            expect(aiClient.respond.mock.calls[0][1]).toBeUndefined();
         });
     });
 });
