@@ -7,6 +7,7 @@ import Ws from '@olegpolyakov/backend/server/ws';
 import Api from './api';
 import ChangeHandler from './changes';
 import Context from './context';
+import Events from './events';
 import Models from './models';
 import Services from './services';
 
@@ -19,9 +20,10 @@ const {
     JWT_SECRET = ''
 } = process.env;
 
-const db = await Db(DB_URL).connect();
+const db = await Db(DB_URL, { debug: true }).connect();
 const models = Models(db);
 const services = Services(models);
+Events(models, services);
 const context = Context({
     models,
     services

@@ -5,17 +5,23 @@ import type { Context } from '@/context';
 export default ({
     models: { Conversation, Message }
 }: Context): ChangeHandler => async ({ model, documentId }, userId) => {
-    if (model === 'Message') {
-        const message = await Message.findOne({ _id: documentId });
-        const conversation = await Conversation.findOne({ _id: message?.conversationId, userId });
-
-        if (!conversation) return false;
+    if (model === 'message') {
+        const message = await Message
+            .findOne({ _id: documentId }, 'conversationId')
+            .setOptions({ lean: true, includeDeleted: true });
+        const conversation = await Conversation
+            .findOne({ _id: message?.conversationId, userId }, '_id')
+            .setOptions({ lean: true, includeDeleted: true });
+        
+        return !!conversation;
     }
 
-    if (model === 'Conversation') {
-        const conversation = await Conversation.findOne({ _id: documentId, userId });
+    if (model === 'conversation') {
+        const conversation = await Conversation
+            .findOne({ _id: documentId, userId }, '_id')
+            .setOptions({ lean: true, includeDeleted: true });
 
-        if (!conversation) return false;
+        return !!conversation;
     }
 
     return true;
