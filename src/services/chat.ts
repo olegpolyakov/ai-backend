@@ -1,88 +1,65 @@
-import type { AIClient, FileContent, ImageContent, Message, MessageContent, TextContent } from '@olegpolyakov/backend/features/ai';
-import type { FileService } from '@olegpolyakov/backend/features/files';
-import { NotFoundError } from '@olegpolyakov/backend/server';
-import { isEntityRef, Ref } from '@olegpolyakov/core/objects/ref';
+import type { Message, MessageContent, ResponseMessage, TextContent } from '@olegpolyakov/backend/features/ai';
+import { BadRequestError } from '@olegpolyakov/backend/server';
+import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 
-import type { ConversationModel, MessageDocument, MessageModel } from '@/models';
+import type { MessageDocument } from '@/models';
 
+import type AIService from './ai';
+import type MCPService from './mcp';
 import type MemoryService from './memory';
+import type RefService from './ref';
 
-const SYSTEM_PROMPT = 'You are an AI assistant. Respond to the user messages based on the conversation history and memories.';
-const HISTORY_LIMIT = 25;
-    
+const SYSTEM_PROMPT = 'You are an AI assistant. Respond to the user prompt based on the user preferences, relevant memories, and tools';
+const MEMORY_TIMEOUT_MS = 10000;
+
 export default class ChatService {
     constructor(
-        private AI: AIClient,
-        private Conversation: ConversationModel,
-        private Message: MessageModel,
+        private AI: AIService,
+        private MCP: MCPService,
         private Memory: MemoryService,
-        private File: FileService
+        private Ref: RefService
     ) {}
 
-    async sendMessage(
-        userId: string,
-        conversationId: string,
-        content: string,
-        refs?: Ref[]
-    ): Promise<Message> {
-        const conversation = await this.Conversation.findOne({
-            _id: conversationId,
-            userId
-        });
-
-        if (!conversation) throw new NotFoundError();
-
-        const [history, systemMessage] = await Promise.all([
-            this.Message
-                .find({ conversationId })
-                .select('role content refs')
-                .sort({ createdAt: -1 })
-                .limit(HISTORY_LIMIT - 1)
-                .lean(),
-            this.buildSystemMessage(userId, content)
-        ]);
-
-        const userMessage = await this.Message.create({
-            conversationId,
-            role: 'user',
-            content,
-            refs
-        });
-
+    async reply({
+        userId,
+        accessToken,
+        messages,
+        model
+    }: {
+        userId: string;
+        accessToken: string;
+        messages: MessageDocument[];
+        model: string;
+    }): Promise<ResponseMessage> {
+        const lastMessage = messages.at(-1);
+        
+        if (!lastMessage || lastMessage.role !== 'user') throw new BadRequestError(
+            'Last message must be a user message'
+        );
+        
+        const systemMessage = await this.buildSystemMessage(userId, lastMessage);
+        const otherMessages = await this.buildMessages(messages, accessToken);
         const input = [
             systemMessage,
-            ...(await Promise.all(
-                history
-                    .toReversed()
-                    .concat(userMessage)
-                    .map(async message => this.buildMessage(message))
-            ))
-        ] as Message[];
-
-        const response = await this.AI.respond(input, { model: conversation.model });
-
-        const assistantMessage = await this.Message.create({
-            conversationId,
-            role: 'assistant',
-            content: response.message.content
-        });
-
-        void this.Memory.extractMemories(
-            userId,
-            content,
-            conversation.model,
-            [userMessage.id, assistantMessage.id]
-        ).catch(error => {
-            console.error('Memory extraction failed:', error);
+            ...otherMessages
+        ];
+        const tools = await this.MCP.getTools(userId, accessToken);
+        const response = await this.AI.respond(input, {
+            model,
+            tools
         });
 
         return response.message;
     }
 
-    private async buildSystemMessage(userId: string, content: string): Promise<Message> {
+    private async buildSystemMessage(userId: string, message: Message): Promise<Message> {
+        const textContent = Array.isArray(message.content)
+            ? message.content.find(item => item.type === 'text')?.content ?? ''
+            : message.content;
+
         const [preferences, relevant] = await Promise.all([
             this.Memory.getPreferences(userId),
-            this.Memory.getRelevantMemories(userId, content)
+            withTimeout(this.Memory.getRelevantMemories(userId, textContent), MEMORY_TIMEOUT_MS, [])
         ]);
 
         void this.Memory.markReferenced(relevant.map(m => m.id));
@@ -98,46 +75,23 @@ export default class ChatService {
         };
     }
 
-    private async buildMessage(message: MessageDocument): Promise<Message> {
-        if (!message.refs || message.refs.length === 0) return {
-            content: message.content,
-            role: message.role
-        };
+    private async buildMessages(messages: MessageDocument[], accessToken: string): Promise<Message[]> {
+        return Promise.all(messages.map(async message => {
+            if (!message.refs || message.refs.length === 0) return {
+                content: message.content,
+                role: message.role
+            };
 
-        const text: TextContent = {
-            type: 'text',
-            content: message.content
-        };
-        const content: MessageContent[] = await this.resolveRefs(message.refs);
+            const text: TextContent = {
+                type: 'text',
+                content: message.content
+            };
+            const content: MessageContent[] = await this.Ref.resolve(message.refs, accessToken);
 
-        return {
-            role: message.role,
-            content: [text, ...content]
-        };
-    }
-
-    private async resolveRefs(refs: Ref[]): Promise<MessageContent[]> {
-        const promises = refs.map(async ref => {
-            if (isEntityRef(ref)) {
-                const file = await this.File.get(ref.id);
-                const url = await this.File.getUrl(ref.id);
-
-                if (file.type.startsWith('image')) {
-                    return {
-                        type: 'image',
-                        url
-                    } as ImageContent;
-                } else {
-                    return {
-                        type: 'file',
-                        url
-                    } as FileContent;
-                }
-            }
-        });
-
-        const resolved = await Promise.all(promises);
-
-        return resolved.filter(i => !!i);
+            return {
+                role: message.role,
+                content: [text, ...content]
+            };
+        }));
     }
 }

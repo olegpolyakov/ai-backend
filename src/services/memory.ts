@@ -34,16 +34,17 @@ Confidence guide:
 Only return facts worth remembering long-term.
 `;
 
-const MEMORY_EXTRACTION_SCHEMA = object('Memory extraction schema', {
-    memories: array('Array of memories',
-        object('Memory object', {
+const MEMORY_EXTRACTION_SCHEMA = object({
+    memories: array(
+        object({
             type: string(`Type of the memory, e.g., ${MEMORY_TYPES.join(', ')}`),
             content: string('Content of the memory'),
             importance: integer('Importance of the memory', { minimum: 1, maximum: 10 }),
             confidence: integer('Confidence that the memory is true, from 0 to 1', { minimum: 0, maximum: 1 })
-        })
+        }, 'Memory object'),
+        'Array of memories'
     )
-}) as JsonSchema;
+}, 'Memory extraction schema') as JsonSchema;
 
 type ExtractedMemory = Pick<MemoryData, 'type' | 'content' | 'importance' | 'confidence'>;
 

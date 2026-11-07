@@ -39,7 +39,8 @@ export const MessageSchema = new Schema<MessageDocument, MessageModel, MessageMe
     },
     content: {
         type: String,
-        default: ''
+        default: '',
+        trim: true
     },
     role: {
         type: String,

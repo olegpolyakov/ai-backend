@@ -1,10 +1,12 @@
-import { BadRequestError, NotFoundError, Request, Response } from '@olegpolyakov/backend/server';
+import { BadRequestError, Request, Response } from '@olegpolyakov/backend/server';
 
 import type { Context } from '@/context';
 
+const HISTORY_LIMIT = 25;
+
 export default ({
     models: { Conversation, Message },
-    services: { Chat, File }
+    services: { Chat, Memory }
 }: Context) => ({
     async list(req: Request, res: Response) {
         const conversations = await Conversation
@@ -30,16 +32,24 @@ export default ({
             return conversation.toData({ unreadMessagesCount });
         }));
 
-        res.json({ ok: true, data });
+        res.json({
+            ok: true,
+            data
+        });
     },
 
     async create(req: Request, res: Response) {
+        const { title } = req.body;
+
         const conversation = await Conversation.create({
-            title: req.body.title,
+            title,
             userId: req.userId
         });
 
-        res.json({ ok: true, data: conversation });
+        res.json({
+            ok: true,
+            data: conversation
+        });
     },
 
 
@@ -47,47 +57,45 @@ export default ({
         const { conversationId } = req.params;
         const { title, description, model } = req.body;
 
-        if (!title && !description && !model) {
-            return res.status(400).json({
-                ok: false,
-                message: 'No fields to update'
-            });
-        }
+        if (!title && !description && !model) throw new BadRequestError('No fields to update');
 
-        const conversation = await Conversation.update(
-            {
-                _id: conversationId,
-                userId: req.userId
-            },
-            { title, description, model }
-        );
+        const conversation = await Conversation.update({
+            _id: conversationId,
+            userId: req.userId
+        }, {
+            title, description, model
+        });
 
-        if (!conversation) throw new NotFoundError('Conversation not found');
-
-        res.json({ ok: true, data: conversation });
+        res.json({
+            ok: true,
+            data: conversation
+        });
     },
 
     async delete(req: Request<{ conversationId: string }>, res: Response) {
+        const { conversationId } = req.params;
+
         await Conversation.deleteOne({
-            _id: req.params.conversationId,
+            _id: conversationId,
             userId: req.userId
         });
 
         await Message.deleteMany({
-            conversationId: req.params.conversationId
+            conversationId
         });
 
         res.json({ ok: true });
     },
 
     async view(req: Request<{ conversationId: string }>, res: Response) {
-        await Conversation.updateOne(
-            {
-                _id: req.params.conversationId,
-                userId: req.userId
-            },
-            { viewedAt: new Date() }
-        );
+        const { conversationId } = req.params;
+
+        await Conversation.updateOne({
+            _id: conversationId,
+            userId: req.userId
+        }, {
+            viewedAt: new Date()
+        });
 
         res.json({ ok: true });
     },
@@ -112,6 +120,7 @@ export default ({
 
     async createMessage(req: Request<{ conversationId: string }>, res: Response) {
         const userId = req.userId!;
+        const authToken = req.authToken!;
         const { conversationId } = req.params;
         const { content, refs } = req.body;
 
@@ -119,60 +128,69 @@ export default ({
             'The message can not be empty'
         );
 
-        try {
-            // TODO Find a better way to handle this, maybe by using a middleware to set the access token for all requests
-            File.accessToken = req.authToken;
+        const conversation = await Conversation.get({
+            _id: conversationId,
+            userId
+        });
 
-            const message = await Chat.sendMessage(
-                userId,
-                conversationId,
-                content,
-                refs
-            );
+        const userMessage = await Message.create({
+            conversationId,
+            role: 'user',
+            content,
+            refs
+        });
 
-            res.json({
-                ok: true,
-                data: message
-            });
-        } catch (error) {
-            if (error instanceof NotFoundError) {
-                return res.status(404).json({
-                    ok: false,
-                    message: error.message
-                });
-            }
+        const messages = await Message
+            .find({ conversationId })
+            .select('role content refs')
+            .sort({ createdAt: -1 })
+            .limit(HISTORY_LIMIT)
+            .lean();
 
-            throw error;
-        } finally {
-            // TODO Find a better way to handle this, maybe by using a middleware to unset the access token for all requests
-            File.accessToken = undefined;
-        }
+        const message = await Chat.reply({
+            userId,
+            accessToken: authToken,
+            messages: messages.toReversed(),
+            model: conversation.model
+        });
+
+        const assistantMessage = await Message.create({
+            conversationId,
+            ...message
+        });
+
+        void Memory.extractMemories(
+            userId,
+            content,
+            conversation.model,
+            [userMessage.id, assistantMessage.id]
+        ).catch(error => {
+            console.error('Memory extraction failed:', error);
+        });
+
+        res.json({
+            ok: true,
+            data: message
+        });
     },
 
     async updateMessage(req: Request<{ conversationId: string; messageId: string }>, res: Response) {
-        const content = typeof req.body?.content === 'string'
-            ? req.body.content.trim()
-            : undefined;
+        const { conversationId, messageId } = req.params;
+        const { content } = req.body;
 
-        if (!content) {
-            return res.status(400).json({ ok: false, message: 'Content is required' });
-        }
+        if (!content) throw new BadRequestError('Content is required');
 
-        const conversation = await Conversation.exists({
-            _id: req.params.conversationId,
+        const conversation = await Conversation.get({
+            _id: conversationId,
             userId: req.userId
-        });
-
-        if (!conversation) throw new NotFoundError('Conversation not found');
+        }, '_id');
 
         const message = await Message.update({
-            _id: req.params.messageId,
-            conversationId: req.params.conversationId
+            _id: messageId,
+            conversationId: conversation.id
         }, {
             content
         });
-
-        if (!message) throw new NotFoundError('Message not found');
 
         res.json({
             ok: true,
@@ -183,19 +201,15 @@ export default ({
     async deleteMessage(req: Request<{ conversationId: string; messageId: string }>, res: Response) {
         const { conversationId, messageId } = req.params;
 
-        const conversation = await Conversation.exists({
+        const conversation = await Conversation.get({
             _id: conversationId,
             userId: req.userId
-        });
-
-        if (!conversation) throw new NotFoundError('Conversation not found');
+        }, '_id');
 
         const message = await Message.delete({
             _id: messageId,
-            conversationId: conversationId
+            conversationId: conversation.id
         });
-
-        if (!message) throw new NotFoundError('Message not found');
 
         res.json({
             ok: true,

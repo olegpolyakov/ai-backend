@@ -34,7 +34,7 @@ export type ConversationModel = Model<ConversationDocument, unknown, Conversatio
 
 export const ConversationSchema = new Schema<ConversationDocument, ConversationModel, ConversationMethods, ConversationVirtuals>({
     userId: { type: Types.UUID, required: true },
-    title: { type: String, required: true },
+    title: { type: String, default: '' },
     description: { type: String, default: '' },
     model: { type: String },
     viewedAt: { type: Date }

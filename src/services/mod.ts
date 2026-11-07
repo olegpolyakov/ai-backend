@@ -1,18 +1,19 @@
 import { OllamaClient, OpenAIClient } from '@olegpolyakov/backend/features/ai';
 import { EmbedService, OpenAIEmbedClient } from '@olegpolyakov/backend/features/embed';
-import { FileService } from '@olegpolyakov/backend/features/files';
 
 import type { Models } from '@/models';
 
 import AIService from './ai';
 import ChatService from './chat';
+import MCPService from './mcp';
 import MemoryService from './memory';
+import RefService from './ref';
 
 export type Services = {
     AI: AIService,
     Chat: ChatService,
     Embed: EmbedService,
-    File: FileService,
+    MCP: MCPService,
     Memory: MemoryService,
 };
 
@@ -23,7 +24,7 @@ const {
     OPENAI_API_URL = ''
 } = process.env;
 
-export default ({ Conversation, Message, Memory }: Models) => {
+export default ({ Integration, Memory }: Models) => {
     const embedClient = new OpenAIEmbedClient({
         apiKey: OPENAI_API_KEY,
         baseURL: OPENAI_API_URL,
@@ -38,17 +39,18 @@ export default ({ Conversation, Message, Memory }: Models) => {
         baseURL: OPENAI_API_URL
     });
 
-    const fileService = new FileService(FILES_API_URL);
     const embedService = new EmbedService(embedClient);
+    const mcpService = new MCPService(Integration);
     const memoryService = new MemoryService(openAIClient, embedService, Memory);
-    const aiService = new AIService(openAIClient, memoryService);
-    const chatService = new ChatService(openAIClient, Conversation, Message, memoryService, fileService);
+    const aiService = new AIService(openAIClient);
+    const refService = new RefService(FILES_API_URL);
+    const chatService = new ChatService(aiService, mcpService, memoryService, refService);
 
     return {
         AI: aiService,
         Chat: chatService,
         Embed: embedService,
-        File: fileService,
+        MCP: mcpService,
         Memory: memoryService
     };
 };

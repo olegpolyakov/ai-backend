@@ -28,53 +28,43 @@ export default ({
 
         input = buildInput(input, req.files);
 
-        try {
-            if (stream) {
-                // TODO Enable streaming
-                // res.setHeader('Content-Type', 'text/event-stream');
-                // res.setHeader('Connection', 'keep-alive');
-                // res.setHeader('Transfer-Encoding', 'chunked');
-                // res.setHeader('Cache-Control', 'no-cache');
+        if (stream) {
+            // TODO Enable streaming
+            // res.setHeader('Content-Type', 'text/event-stream');
+            // res.setHeader('Connection', 'keep-alive');
+            // res.setHeader('Transfer-Encoding', 'chunked');
+            // res.setHeader('Cache-Control', 'no-cache');
 
-                // const stream = await ollama.chat({
-                //     model,
-                //     messages,
-                //     stream: true,
-                //     tools: tools.definitions
-                // });
+            // const stream = await ollama.chat({
+            //     model,
+            //     messages,
+            //     stream: true,
+            //     tools: tools.definitions
+            // });
 
-                // for await (const chunk of stream) {
-                //     res.write(JSON.stringify(chunk.message) + '\n');
-                // }
+            // for await (const chunk of stream) {
+            //     res.write(JSON.stringify(chunk.message) + '\n');
+            // }
 
-                // res.end();
-            } else {
-                res.setHeader('Content-Type', 'application/json');
+            // res.end();
+        } else {
+            res.setHeader('Content-Type', 'application/json');
 
-                const response = await AI.respond(req.userId!, input, {
-                    model,
-                    format
-                });
+            const response = await AI.respond(input, {
+                model,
+                format
+            });
 
-                const data = new Message({
-                    ...response.message,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                });
+            const data = new Message({
+                ...response.message,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            });
 
-                return res.send({
-                    ok: true,
-                    data
-                });
-            }
-        } catch (error) {
-            console.error('AI error:', error);
-
-            if (!res.headersSent) {
-                res.status(500).json({ error: 'Failed to process request' });
-            } else {
-                res.end();
-            }
+            return res.send({
+                ok: true,
+                data
+            });
         }
     }
 });
