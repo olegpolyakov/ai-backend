@@ -4,6 +4,7 @@ import type { Context } from '@/context';
 
 import conversations from './conversations'; 
 import embed from './embed';
+import integrations from './integrations';
 import memories from './memories';
 import models from './models';
 import respond from './respond';
@@ -13,6 +14,7 @@ export default (context: Context) => {
 
     router.use('/conversations', conversations(context));
     router.use('/embed', embed(context));
+    router.use('/integrations', integrations(context));
     router.use('/memories', memories(context));
     router.use('/models', models(context));
     router.use('/respond', respond(context));
@@ -20,9 +22,7 @@ export default (context: Context) => {
     router.use((error: Error & { code?: number; status?: number }, req: Request, res: Response, next: NextFunction) => {
         console.error(error);
 
-        if (res.headersSent) {
-            return next(error);
-        }
+        if (res.headersSent) return next(error);
 
         const status = Number(error.code) || Number(error.status) || 500;
 
