@@ -92,7 +92,7 @@ describe('Conversations API', () => {
     describe('POST /conversations', () => {
         it('creates a conversation for the current user', async () => {
             const res = await agent.post('/').send({
-                title: 'New conversation',
+                title: 'Untitled conversation',
                 userId: OTHER_USER_ID
             });
 
@@ -100,8 +100,8 @@ describe('Conversations API', () => {
             expect(res.body).toMatchObject({
                 ok: true,
                 data: {
-                    userId: USER_ID,
-                    title: 'New conversation'
+                    title: 'Untitled conversation',
+                    userId: USER_ID
                 }
             });
             expect(await Conversation.countDocuments({ userId: USER_ID })).toBe(1);
