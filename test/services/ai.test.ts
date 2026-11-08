@@ -1,40 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AIClient } from '@olegpolyakov/backend/features/ai';
-import type { EmbedService } from '@olegpolyakov/backend/features/embed';
-import { useDb } from '@olegpolyakov/backend/test/mocks/db';
-import { useModel } from '@olegpolyakov/backend/test/mocks/models';
+import type { AIClient, Message } from '@olegpolyakov/backend/features/ai';
+import { BadRequestError } from '@olegpolyakov/backend/server';
 
-import { MemoryData, MemorySchema } from '@/models';
-import { AIService, MemoryService } from '@/services';
-
-const USER_ID = '123e4567-e89b-12d3-a456-426614174000';
-const OTHER_USER_ID = '123e4567-e89b-12d3-a456-426614174001';
+import { AIService } from '@/services';
 
 describe('AIService', () => {
-    const db = useDb();
-    const Memory = useModel(db, 'Memory', MemorySchema, { beforeEach: true });
     const aiClient = {
         getModels: vi.fn<AIClient['getModels']>(),
         respond: vi.fn<AIClient['respond']>()
-    };
-    const embedService = {
-        embed: vi.fn<EmbedService['embed']>()
     };
     let aiService: AIService;
 
     beforeEach(() => {
         aiClient.getModels.mockReset();
         aiClient.respond.mockReset();
-        embedService.embed.mockReset();
 
-        const memoryService = new MemoryService(
-            aiClient as unknown as AIClient,
-            embedService as unknown as EmbedService,
-            Memory
-        );
-
-        aiService = new AIService(aiClient as unknown as AIClient, memoryService);
+        aiService = new AIService(aiClient as unknown as AIClient);
     });
 
     describe('getModels', () => {
@@ -48,80 +30,24 @@ describe('AIService', () => {
     });
 
     describe('respond', () => {
-        it('combines user preferences and relevant memories before responding', async () => {
-            await Memory.create([
-                $({ type: 'preference', content: 'Prefers concise answers', importance: 8 }),
-                $({ type: 'fact', content: 'Lives in Paris', embedding: [1, 0] }),
-                $({ userId: OTHER_USER_ID, type: 'fact', content: 'Lives in Rome', embedding: [1, 0] })
-            ]);
-            embedService.embed.mockResolvedValue([[1, 0]]);
-            aiClient.respond.mockResolvedValue({
+        it('wraps a string prompt in a user message', async () => {
+            const response = {
                 message: {
-                    role: 'assistant',
-                    content: 'Bonjour!'
-                }
-            });
-
-            const options = { model: 'test-model' };
-            const response = await aiService.respond(USER_ID, 'Say hello', options);
-
-            expect(response).toEqual({
-                message: {
-                    role: 'assistant',
-                    content: 'Bonjour!'
-                }
-            });
-            expect(embedService.embed).toHaveBeenCalledWith('Say hello');
-            expect(aiClient.respond).toHaveBeenCalledWith([
-                {
-                    role: 'system',
-                    content: [
-                        'You are an AI assistant. Respond to the user prompt based on the user preferences and relevant memories.',
-                        `User ID: ${USER_ID}`,
-                        'User preferences\n- Prefers concise answers',
-                        'Relevant memories\n- Lives in Paris'
-                    ].join('\n\n')
-                },
-                { role: 'user', content: 'Say hello' }
-            ], options);
-        });
-
-        it('responds with the base system context when there are no memories', async () => {
-            aiClient.respond.mockResolvedValue({
-                message: {
-                    role: 'assistant',
+                    role: 'assistant' as const,
                     content: 'Hello!'
                 }
-            });
+            };
+            aiClient.respond.mockResolvedValue(response);
 
-            const response = await aiService.respond(USER_ID, 'Say hello');
+            const result = await aiService.respond('Say hello');
 
-            expect(response).toEqual({
-                message: {
-                    role: 'assistant',
-                    content: 'Hello!'
-                }
-            });
-            expect(embedService.embed).not.toHaveBeenCalled();
+            expect(result).toBe(response);
             expect(aiClient.respond).toHaveBeenCalledWith([
-                {
-                    role: 'system',
-                    content: [
-                        'You are an AI assistant. Respond to the user prompt based on the user preferences and relevant memories.',
-                        `User ID: ${USER_ID}`
-                    ].join('\n\n')
-                },
                 { role: 'user', content: 'Say hello' }
             ], undefined);
         });
 
-        it('preserves chronological history and uses the latest message content for memory lookup', async () => {
-            await Memory.create($({
-                type: 'fact',
-                content: 'Paris is a city',
-                embedding: [1, 0]
-            }));
-            embedService.embed.mockResolvedValue([[1, 0]]);
+        it('passes message history and options to the AI client unchanged', async () => {
             const response = {
                 message: {
                     role: 'assistant' as const,
@@ -130,39 +56,36 @@ describe('AIService', () => {
             };
             aiClient.respond.mockResolvedValue(response);
 
-            const input = [
-                { role: 'user' as const, content: 'I want to travel.' },
-                { role: 'assistant' as const, content: 'Where would you like to go?' },
-                { role: 'user' as const, content: [
-                    { type: 'text' as const, content: 'Tell me about Paris.' },
-                    { type: 'image' as const, url: 'data:image/png;base64,aGVsbG8=' }
+            const input: Message[] = [
+                { role: 'system', content: 'You are an AI assistant.' },
+                { role: 'user', content: 'I want to travel.' },
+                { role: 'assistant', content: 'Where would you like to go?' },
+                { role: 'user', content: [
+                    { type: 'text', content: 'Tell me about Paris.' },
+                    { type: 'image', url: 'data:image/png;base64,aGVsbG8=' }
                 ] }
             ];
-            const result = await aiService.respond(USER_ID, input);
+            const options = { model: 'test-model' };
+            const result = await aiService.respond(input, options);
 
             expect(result).toBe(response);
-            expect(embedService.embed).toHaveBeenCalledWith('Tell me about Paris.');
             expect(aiClient.respond).toHaveBeenCalledOnce();
-            expect(aiClient.respond.mock.calls[0][0].slice(1)).toEqual(input);
-            expect(aiClient.respond.mock.calls[0][1]).toBeUndefined();
+            expect(aiClient.respond).toHaveBeenCalledWith(input, options);
+        });
+
+        it('rejects an empty message list', async () => {
+            await expect(aiService.respond([])).rejects.toThrow(BadRequestError);
+            expect(aiClient.respond).not.toHaveBeenCalled();
+        });
+
+        it('rejects history that does not end with a user message', async () => {
+            const input: Message[] = [
+                { role: 'user', content: 'Hello!' },
+                { role: 'assistant', content: 'Hi!' }
+            ];
+
+            await expect(aiService.respond(input)).rejects.toThrow('Last message must be a user message');
+            expect(aiClient.respond).not.toHaveBeenCalled();
         });
     });
 });
-
-function $({
-    userId = USER_ID,
-    type = 'fact',
-    embedding = [1, 0],
-    importance = 5,
-    confidence = 0.9,
-    ...rest
-}: Partial<MemoryData>) {
-    return {
-        userId,
-        type,
-        embedding,
-        importance,
-        confidence,
-        ...rest
-    };
-}

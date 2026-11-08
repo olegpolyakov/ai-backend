@@ -35,12 +35,12 @@ describe('MemoryService', () => {
 
     describe('getPreferences', () => {
         it('returns only the user preferences ordered by importance', async () => {
-            const [low, high] = await Memory.create([
-                $({ type: 'preference', content: 'Prefers tea', importance: 3 }),
-                $({ type: 'preference', content: 'Prefers quiet', importance: 8 }),
-                $({ type: 'fact', content: 'Lives in Paris', importance: 10 }),
-                $({ userId: OTHER_USER_ID, type: 'preference', content: 'Likes coffee' })
-            ]);
+            const [low, high] = await Memory.create(asMemories(
+                { type: 'preference', content: 'Prefers tea', importance: 3 },
+                { type: 'preference', content: 'Prefers quiet', importance: 8 },
+                { type: 'fact', content: 'Lives in Paris', importance: 10 },
+                { userId: OTHER_USER_ID, type: 'preference', content: 'Likes coffee' }
+            ));
 
             const memories = await memoryService.getPreferences(USER_ID);
 
@@ -50,12 +50,12 @@ describe('MemoryService', () => {
 
     describe('getMemories', () => {
         it('excludes preferences, applies the query, and scopes results to the user', async () => {
-            const [important] = await Memory.create([
-                $({ type: 'fact', content: 'Works in design', importance: 8 }),
-                $({ type: 'goal', content: 'Learn French', importance: 4 }),
-                $({ type: 'preference', content: 'Likes tea', importance: 9 }),
-                $({ userId: OTHER_USER_ID, type: 'fact', content: 'Works in design', importance: 10 })
-            ]);
+            const [important] = await Memory.create(asMemories(
+                { type: 'fact', content: 'Works in design', importance: 8 },
+                { type: 'goal', content: 'Learn French', importance: 4 },
+                { type: 'preference', content: 'Likes tea', importance: 9 },
+                { userId: OTHER_USER_ID, type: 'fact', content: 'Works in design', importance: 10 }
+            ));
 
             const memories = await memoryService.getMemories(USER_ID, { importance: { $gte: 7 } });
 
@@ -65,7 +65,7 @@ describe('MemoryService', () => {
 
     describe('getRelevantMemories', () => {
         it('returns no results for an empty query without requesting embeddings', async () => {
-            await Memory.create($({ type: 'fact', content: 'Lives in Paris' }));
+            await Memory.create(asMemories({ type: 'fact', content: 'Lives in Paris' }));
 
             const memories = await memoryService.getRelevantMemories(USER_ID, '');
 
@@ -74,10 +74,10 @@ describe('MemoryService', () => {
         });
 
         it('returns no results and skips embedding when no confident memories exist', async () => {
-            await Memory.create([
-                $({ type: 'fact', content: 'Might like jazz', confidence: 0.4 }),
-                $({ type: 'preference', content: 'Likes tea' })
-            ]);
+            await Memory.create(asMemories(
+                { type: 'fact', content: 'Might like jazz', confidence: 0.4 },
+                { type: 'preference', content: 'Likes tea' }
+            ));
 
             const memories = await memoryService.getRelevantMemories(USER_ID, 'music');
 
@@ -86,10 +86,10 @@ describe('MemoryService', () => {
         });
 
         it('ranks memories by relevance and limits the result count', async () => {
-            const [relevant] = await Memory.create([
-                $({ type: 'fact', content: 'Likes hiking', embedding: [1, 0], importance: 2 }),
-                $({ type: 'fact', content: 'Enjoys cooking', embedding: [0, 1], importance: 10 })
-            ]);
+            const [relevant] = await Memory.create(asMemories(
+                { type: 'fact', content: 'Likes hiking', embedding: [1, 0], importance: 2 },
+                { type: 'fact', content: 'Enjoys cooking', embedding: [0, 1], importance: 10 }
+            ));
             embedService.embed.mockResolvedValue([[1, 0]]);
 
             const memories = await memoryService.getRelevantMemories(USER_ID, 'outdoor activities', 1);
@@ -99,15 +99,50 @@ describe('MemoryService', () => {
         });
 
         it('falls back to importance ordering when the query embedding is empty', async () => {
-            const [important] = await Memory.create([
-                $({ type: 'fact', content: 'Important fact', importance: 9 }),
-                $({ type: 'goal', content: 'Minor goal', importance: 2 })
-            ]);
+            const [important] = await Memory.create(asMemories(
+                { type: 'fact', content: 'Important fact', importance: 9 },
+                { type: 'goal', content: 'Minor goal', importance: 2 }
+            ));
             embedService.embed.mockResolvedValue([[]]);
 
             const memories = await memoryService.getRelevantMemories(USER_ID, 'query', 1);
 
             expect(memories.map(memory => memory.id)).toEqual([important.id]);
+        });
+    });
+
+    describe('recallMemories', () => {
+        it('returns relevant memories and marks them as referenced', async () => {
+            const [memory] = await Memory.create(asMemories({
+                type: 'fact', content: 'Lives in Paris', embedding: [1, 0]
+            }));
+            embedService.embed.mockResolvedValue([[1, 0]]);
+
+            const memories = await memoryService.recallMemories(USER_ID, 'Where do I live?', 1000);
+            
+            expect(memories.map(m => m.id)).toEqual([memory.id]);
+            
+            await vi.waitFor(async () => {
+                expect((await Memory.findById(memory.id))?.lastReferencedAt).toBeInstanceOf(Date);
+            });
+        });
+
+        it('returns an empty list and marks nothing when the lookup times out', async () => {
+            const [memory] = await Memory.create(asMemories(
+                { type: 'fact', content: 'Lives in Paris', embedding: [1, 0] }
+            ));
+            
+            let resolveEmbed!: (value: number[][]) => void;
+            embedService.embed.mockReturnValue(new Promise(resolve => { resolveEmbed = resolve; }));
+
+            const memories = await memoryService.recallMemories(USER_ID, 'Where do I live?', 10);
+
+            expect(memories).toEqual([]);
+
+            resolveEmbed([[1, 0]]);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect((await Memory.findById(memory.id))?.lastReferencedAt).toBeUndefined();
         });
     });
 
@@ -171,7 +206,7 @@ describe('MemoryService', () => {
         });
 
         it('updates a semantic duplicate instead of creating another memory', async () => {
-            const existing = await Memory.create($({
+            const [existing] = await Memory.create(asMemories({
                 type: 'fact',
                 content: 'Enjoys hiking',
                 embedding: [1, 0],
@@ -238,7 +273,7 @@ describe('MemoryService', () => {
         });
 
         it('sets lastReferencedAt on the requested memories', async () => {
-            const memory = await Memory.create($({ type: 'fact', content: 'Lives in Paris' }));
+            const [memory] = await Memory.create(asMemories({ type: 'fact', content: 'Lives in Paris' }));
 
             await memoryService.markReferenced([memory.id]);
 
@@ -256,10 +291,10 @@ describe('MemoryService', () => {
         });
 
         it('adds the prefix and labels low-confidence memories as uncertain', async () => {
-            const [certain, uncertain] = await Memory.create([
-                $({ type: 'fact', content: 'Lives in Paris', confidence: 0.9 }),
-                $({ type: 'goal', content: 'May move to Berlin', confidence: 0.6 })
-            ]);
+            const [certain, uncertain] = await Memory.create(asMemories(
+                { type: 'fact', content: 'Lives in Paris', confidence: 0.9 },
+                { type: 'goal', content: 'May move to Berlin', confidence: 0.6 }
+            ));
 
             const prompt = memoryService.getPrompt('Relevant memories', [certain.toData(), uncertain.toData()]);
 
@@ -268,20 +303,20 @@ describe('MemoryService', () => {
     });
 });
 
-function $({
-    userId = USER_ID,
-    type = 'fact',
-    embedding = [1, 0],
-    importance = 5,
-    confidence = 0.9,
-    ...rest
-}: Partial<MemoryData>) {
-    return {
+function asMemories(...data: Partial<MemoryData>[]) {
+    return data.map(({
+        userId = USER_ID,
+        type = 'fact',
+        embedding = [1, 0],
+        importance = 5,
+        confidence = 0.9,
+        ...rest
+    }) => ({
         userId,
         type,
         embedding,
         importance,
         confidence,
         ...rest
-    };
+    }));
 }

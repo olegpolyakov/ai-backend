@@ -1,228 +1,247 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AIClient } from '@olegpolyakov/backend/features/ai';
-import type { FileService } from '@olegpolyakov/backend/features/files';
-import { NotFoundError } from '@olegpolyakov/backend/server';
+import type { AIClient, MessageContent, Tool } from '@olegpolyakov/backend/features/ai';
+import type { EmbedService } from '@olegpolyakov/backend/features/embed';
+import { BadRequestError } from '@olegpolyakov/backend/server';
 import { useDb } from '@olegpolyakov/backend/test/mocks/db';
 import { useModel } from '@olegpolyakov/backend/test/mocks/models';
 
-import { ConversationSchema, MemoryData, MemorySchema, MessageSchema } from '@/models';
-import { ChatService, MemoryService } from '@/services';
+import { MemoryData, MemorySchema, MessageDocument } from '@/models';
+import { AIService, ChatService, MCPService, MemoryService } from '@/services';
+import type RefService from '@/services/ref';
 
 const USER_ID = '123e4567-e89b-12d3-a456-426614174000';
 const OTHER_USER_ID = '123e4567-e89b-12d3-a456-426614174001';
+const ACCESS_TOKEN = 'test-token';
+const SYSTEM_PROMPT = 'You are an AI assistant. Respond to the user prompt based on the user preferences, relevant memories, and tools';
 const IMAGE_REF = {
     kind: 'entity',
     type: 'file',
     id: 'image-123',
-    mimeType: 'application/pdf'
+    mimeType: 'image/png'
 } as const;
 const DOCUMENT_REF = {
     kind: 'entity',
     type: 'file',
     id: 'document-456',
-    mimeType: 'image/png'
+    mimeType: 'application/pdf'
 } as const;
 
 describe('ChatService', () => {
     const db = useDb();
-    const Conversation = useModel(db, 'Conversation', ConversationSchema, { beforeEach: true });
-    const Message = useModel(db, 'Message', MessageSchema, { beforeEach: true });
     const Memory = useModel(db, 'Memory', MemorySchema, { beforeEach: true });
-    const aiClient = {
-        respond: vi.fn<AIClient['respond']>()
+    const aiService = {
+        respond: vi.fn<AIService['respond']>()
     };
     const embedService = {
-        embed: vi.fn()
+        embed: vi.fn<EmbedService['embed']>()
     };
-    const fileService = {
-        get: vi.fn<FileService['get']>(),
-        getUrl: vi.fn<FileService['getUrl']>()
+    const mcpService = {
+        getTools: vi.fn<MCPService['getTools']>()
+    };
+    const refService = {
+        resolve: vi.fn<RefService['resolve']>()
     };
     let memoryService: MemoryService;
     let chatService: ChatService;
 
     beforeEach(() => {
-        aiClient.respond.mockReset();
+        aiService.respond.mockReset();
+        aiService.respond.mockResolvedValue({
+            message: { role: 'assistant', content: 'Here is the answer.' }
+        });
         embedService.embed.mockReset();
-        fileService.get.mockReset();
-        fileService.getUrl.mockReset();
+        mcpService.getTools.mockReset();
+        mcpService.getTools.mockResolvedValue([]);
+        refService.resolve.mockReset();
 
         memoryService = new MemoryService(
-            aiClient as unknown as AIClient,
-            embedService as never,
+            {} as AIClient,
+            embedService as unknown as EmbedService,
             Memory
         );
         chatService = new ChatService(
-            aiClient as unknown as AIClient,
-            Conversation,
-            Message,
+            aiService as unknown as AIService,
+            mcpService as unknown as MCPService,
             memoryService,
-            fileService as unknown as FileService
+            refService as unknown as RefService
         );
     });
 
-    it('throws a NotFoundError when the conversation does not belong to the user', async () => {
-        const conversationId = '123e4567-e89b-12d3-a456-426614174999';
+    describe('reply', () => {
+        it('returns the AI response message', async () => {
+            const message = await chatService.reply({
+                userId: USER_ID,
+                accessToken: ACCESS_TOKEN,
+                messages: asMessages({ role: 'user', content: 'Hello' }),
+                model: 'test-model'
+            });
 
-        await expect(chatService.sendMessage(USER_ID, conversationId, 'Hello')).rejects.toBeInstanceOf(NotFoundError);
-    });
-
-    it('uses recent conversation history and injected memory prompt when sending a message', async () => {
-        const conversation = await Conversation.create({
-            userId: USER_ID,
-            title: 'Trips',
-            model: 'test-model'
+            expect(message).toEqual({ role: 'assistant', content: 'Here is the answer.' });
         });
 
-        await Message.create([
-            { conversationId: conversation.id, role: 'user', content: 'I am visiting Paris' },
-            { conversationId: conversation.id, role: 'assistant', content: 'Nice! Paris is beautiful.' }
-        ]);
+        it('sends the base system prompt followed by the conversation history', async () => {
+            const messages = asMessages(
+                { role: 'user', content: 'I am visiting Paris' },
+                { role: 'assistant', content: 'Nice! Paris is beautiful.' },
+                { role: 'user', content: 'What should I see?' }
+            );
 
-        await Memory.create([
-            $({ type: 'preference', content: 'Prefers concise answers', importance: 8 }),
-            $({ type: 'fact', content: 'Lives in Paris', embedding: [1, 0] }),
-            $({ userId: OTHER_USER_ID, type: 'fact', content: 'Lives in Rome', embedding: [0, 1] })
-        ]);
+            await chatService.reply({
+                userId: USER_ID,
+                accessToken: ACCESS_TOKEN,
+                messages,
+                model: 'test-model'
+            });
 
-        const extractMemories = vi.spyOn(memoryService, 'extractMemories').mockResolvedValue([]);
-        embedService.embed.mockResolvedValue([[1, 0]]);
-        aiClient.respond.mockResolvedValue({
-            message: {
-                role: 'assistant',
-                content: 'Here is the answer.'
-            }
+            expect(aiService.respond).toHaveBeenCalledWith([
+                {
+                    role: 'system',
+                    content: [SYSTEM_PROMPT, `User ID: ${USER_ID}`].join('\n\n')
+                },
+                ...messages
+            ], {
+                model: 'test-model',
+                tools: []
+            });
         });
 
-        const response = await chatService.sendMessage(USER_ID, conversation.id.toString(), 'What city do I live in?');
+        it('injects the user’s preferences and memories relevant to the last message', async () => {
+            await Memory.create(asMemories(
+                { type: 'preference', content: 'Prefers concise answers', importance: 8 },
+                { type: 'fact', content: 'Lives in Paris', embedding: [1, 0] },
+                { type: 'fact', content: 'Might own a cat', confidence: 0.6, embedding: [1, 0], importance: 1 },
+                { userId: OTHER_USER_ID, type: 'preference', content: 'Prefers long answers' },
+                { userId: OTHER_USER_ID, type: 'fact', content: 'Lives in Rome', embedding: [1, 0] }
+            ));
 
-        expect(response.content).toBe('Here is the answer.');
-        expect(embedService.embed).toHaveBeenCalledWith('What city do I live in?');
-        expect(extractMemories).toHaveBeenCalledOnce();
+            embedService.embed.mockResolvedValue([[1, 0]]);
 
-        const [messages, options] = aiClient.respond.mock.calls[0];
+            await chatService.reply({
+                userId: USER_ID,
+                accessToken: ACCESS_TOKEN,
+                messages: asMessages(
+                    { role: 'user', content: 'Earlier question' },
+                    { role: 'assistant', content: 'Earlier answer' },
+                    { role: 'user', content: 'Where do I live?' }
+                ),
+                model: 'test-model'
+            });
 
-        expect(options).toEqual({ model: 'test-model' });
-        expect(messages).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                role: 'system',
-                content: expect.stringContaining('User preferences\n- Prefers concise answers')
-            }),
-            expect.objectContaining({ role: 'user', content: 'I am visiting Paris' }),
-            expect.objectContaining({ role: 'assistant', content: 'Nice! Paris is beautiful.' }),
-            expect.objectContaining({ role: 'user', content: 'What city do I live in?' })
-        ]));
-    });
-
-    it('creates the user and assistant messages and triggers memory extraction in the background', async () => {
-        const conversation = await Conversation.create({
-            userId: USER_ID,
-            title: 'Travel',
-            model: 'test-model'
+            expect(aiService.respond).toHaveBeenCalledWith(expect.arrayContaining([
+                {
+                    role: 'system',
+                    content: [
+                        SYSTEM_PROMPT,
+                        `User ID: ${USER_ID}`,
+                        'User preferences\n- Prefers concise answers',
+                        'Relevant memories\n- Lives in Paris\n- Might own a cat (uncertain)'
+                    ].join('\n\n')
+                }
+            ]), {
+                model: 'test-model',
+                tools: []
+            });
         });
 
-        const extractMemories = vi.spyOn(memoryService, 'extractMemories').mockResolvedValue([]);
-        aiClient.respond.mockResolvedValue({
-            message: {
-                role: 'assistant',
-                content: 'Response content.'
-            }
+        it('passes the user’s MCP tools to the AI service', async () => {
+            const tools = [{ name: 'search' }] as unknown as Tool[];
+            mcpService.getTools.mockResolvedValue(tools);
+
+            await chatService.reply({
+                userId: USER_ID,
+                accessToken: ACCESS_TOKEN,
+                messages: asMessages({ role: 'user', content: 'Search for Paris' }),
+                model: 'test-model'
+            });
+
+            expect(mcpService.getTools).toHaveBeenCalledWith(USER_ID, ACCESS_TOKEN);
+            expect(aiService.respond).toHaveBeenCalledWith(expect.anything(), { model: 'test-model', tools });
         });
 
-        await chatService.sendMessage(USER_ID, conversation.id.toString(), 'I like hiking');
+        it('resolves message references into multimodal content', async () => {
+            refService.resolve.mockImplementation(async refs => refs.map(ref => ({
+                type: ref === IMAGE_REF ? 'image' : 'file',
+                url: `https://files.example/${ref === IMAGE_REF ? IMAGE_REF.id : DOCUMENT_REF.id}`
+            } as MessageContent)));
 
-        const messages = await Message.find({ conversationId: conversation.id }).sort({ createdAt: 1 }).lean();
+            await chatService.reply({
+                userId: USER_ID,
+                accessToken: ACCESS_TOKEN,
+                messages: asMessages(
+                    { role: 'user', content: 'See attached', refs: [IMAGE_REF] },
+                    { role: 'assistant', content: 'I see it.' },
+                    { role: 'user', content: 'What is in this document?', refs: [DOCUMENT_REF] }
+                ),
+                model: 'test-model'
+            });
 
-        expect(messages.map(message => message.role)).toEqual(['user', 'assistant']);
-        expect(messages.map(message => message.content)).toEqual(['I like hiking', 'Response content.']);
-        await Promise.resolve();
-        expect(extractMemories).toHaveBeenCalledWith(
-            USER_ID,
-            'I like hiking',
-            'test-model',
-            expect.arrayContaining([expect.any(String), expect.any(String)])
-        );
-    });
-
-    it('resolves image and document references when building the AI input', async () => {
-        const conversation = await Conversation.create({
-            userId: USER_ID,
-            title: 'Attachments',
-            model: 'test-model'
-        });
-        await Message.create({
-            conversationId: conversation.id,
-            role: 'user',
-            content: 'See attached',
-            refs: [IMAGE_REF]
-        });
-        const extractMemories = vi.spyOn(memoryService, 'extractMemories').mockResolvedValue([]);
-        fileService.get.mockImplementation(async fileId => ({
-            id: fileId,
-            name: fileId,
-            path: fileId,
-            hash: fileId,
-            type: fileId === 'image-123' ? 'image/png' : 'application/pdf',
-            size: 0
-        }));
-        fileService.getUrl.mockImplementation(async fileId => `https://files.example/${fileId}`);
-        aiClient.respond.mockResolvedValue({
-            message: {
-                role: 'assistant',
-                content: 'I reviewed the attachments.'
-            }
+            expect(aiService.respond).toHaveBeenCalledWith(expect.arrayContaining([
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', content: 'See attached' },
+                        { type: 'image', url: 'https://files.example/image-123' }
+                    ]
+                },
+                { role: 'assistant', content: 'I see it.' },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', content: 'What is in this document?' },
+                        { type: 'file', url: 'https://files.example/document-456' }
+                    ]
+                }
+            ]), {
+                model: 'test-model',
+                tools: []
+            });
         });
 
-        await chatService.sendMessage(
-            USER_ID,
-            conversation.id.toString(),
-            'What is in this document?',
-            [DOCUMENT_REF]
-        );
+        it('rejects an empty history', async () => {
+            await expect(chatService.reply({
+                userId: USER_ID,
+                accessToken: ACCESS_TOKEN,
+                messages: [],
+                model: 'test-model'
+            })).rejects.toBeInstanceOf(BadRequestError);
+            expect(aiService.respond).not.toHaveBeenCalled();
+        });
 
-        const [messages] = aiClient.respond.mock.calls[0];
-        
-        expect(messages.at(-1)).toEqual({
-            role: 'user',
-            content: [
-                { type: 'text', content: 'What is in this document?' },
-                { type: 'file', url: 'https://files.example/document-456' }
-            ]
+        it('rejects history that does not end with a user message', async () => {
+            await expect(chatService.reply({
+                userId: USER_ID,
+                accessToken: ACCESS_TOKEN,
+                messages: asMessages(
+                    { role: 'user', content: 'Hello' },
+                    { role: 'assistant', content: 'Hi!' }
+                ),
+                model: 'test-model'
+            })).rejects.toThrow('Last message must be a user message');
+            expect(mcpService.getTools).not.toHaveBeenCalled();
+            expect(aiService.respond).not.toHaveBeenCalled();
         });
-        expect(messages.at(-2)).toEqual({
-            role: 'user',
-            content: [
-                { type: 'text', content: 'See attached' },
-                { type: 'image', url: 'https://files.example/image-123' }
-            ]
-        });
-        expect(fileService.getUrl).toHaveBeenNthCalledWith(1, 'image-123');
-        expect(fileService.getUrl).toHaveBeenNthCalledWith(2, 'document-456');
-        expect(fileService.get).toHaveBeenNthCalledWith(1, 'image-123');
-        expect(fileService.get).toHaveBeenNthCalledWith(2, 'document-456');
-        expect(await Message.findOne({ conversationId: conversation.id, content: 'What is in this document?' })).toMatchObject({
-            content: 'What is in this document?',
-            refs: [DOCUMENT_REF]
-        });
-        expect(extractMemories).toHaveBeenCalled();
     });
 });
 
-function $({
-    userId = USER_ID,
-    type = 'fact',
-    embedding = [1, 0],
-    importance = 5,
-    confidence = 0.9,
-    ...rest
-}: Partial<MemoryData>) {
-    return {
+function asMessages(...items: Array<Pick<MessageDocument, 'role' | 'content'> & Partial<Pick<MessageDocument, 'refs'>>>) {
+    return items as MessageDocument[];
+}
+
+function asMemories(...data: Partial<MemoryData>[]) {
+    return data.map(({
+        userId = USER_ID,
+        type = 'fact',
+        embedding = [1, 0],
+        importance = 5,
+        confidence = 0.9,
+        ...rest
+    }) => ({
         userId,
         type,
         embedding,
         importance,
         confidence,
         ...rest
-    };
+    }));
 }
