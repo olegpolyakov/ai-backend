@@ -78,7 +78,8 @@ MemorySchema.index({
 
 MemorySchema.index({
     userId: 1,
-    content: 1
+    content: 1,
+    deletedAt: 1
 }, {
     unique: true
 });
