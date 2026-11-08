@@ -2,6 +2,7 @@ import { QueryFilter } from 'mongoose';
 
 import type { AIClient } from '@olegpolyakov/backend/features/ai';
 import type { EmbedService } from '@olegpolyakov/backend/features/embed';
+import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 import { array, integer, JsonSchema, object, string } from '@olegpolyakov/core/utils/schema';
 
 import { MEMORY_TYPES, MemoryData, MemoryModel, MemoryType } from '@/models';
@@ -93,6 +94,14 @@ export default class MemoryService {
             }))
             .sort((a, b) => score(b) - score(a)) 
             .slice(0, topK);
+    }
+
+    async recallMemories(userId: string, query: string, timeoutMs: number): Promise<MemoryData[]> {
+        const memories = await withTimeout(this.getRelevantMemories(userId, query), timeoutMs, []);
+
+        void this.markReferenced(memories.map(m => m.id));
+
+        return memories;
     }
 
     async extractMemories(

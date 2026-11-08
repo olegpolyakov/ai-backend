@@ -1,6 +1,5 @@
 import type { Message, MessageContent, ResponseMessage, TextContent } from '@olegpolyakov/backend/features/ai';
 import { BadRequestError } from '@olegpolyakov/backend/server';
-import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 
 import type { MessageDocument } from '@/models';
 
@@ -59,10 +58,8 @@ export default class ChatService {
 
         const [preferences, relevant] = await Promise.all([
             this.Memory.getPreferences(userId),
-            withTimeout(this.Memory.getRelevantMemories(userId, textContent), MEMORY_TIMEOUT_MS, [])
+            this.Memory.recallMemories(userId, textContent, MEMORY_TIMEOUT_MS)
         ]);
-
-        void this.Memory.markReferenced(relevant.map(m => m.id));
 
         return {
             role: 'system',
