@@ -1,9 +1,9 @@
 {
     "name": "@olegpolyakov/ai-backend",
     "version": "0.1.0",
-    "type": "module",
     "description": "",
     "author": "Oleg Poliakov <olegpoliakov@outlook.com>",
+    "type": "module",
     "scripts": {
         "dev": "tsx watch --env-file=.env ./src/main.ts",
         "start": "tsx ./src/main.ts",
