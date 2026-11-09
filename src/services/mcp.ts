@@ -12,25 +12,38 @@ export default class MCPService {
 
     async getTools(userId: string, accessToken: string): Promise<Tool[]> {
         const integrations = await this.Integration.find({ userId, type: 'mcp', enabled: true });
-        const tools = await Promise.all(
+        const tools = await Promise.allSettled(
             integrations.flatMap(async i => {
                 const client = await this.getClient({
                     name: i.name,
                     url: i.url,
                     accessToken,
                     userId
+                }).catch(error => {
+                    throw new Error(`MCPService: Could not connect to ${i.name} MCP server at ${i.url}`, { cause: error });
                 });
             
-                const tools = await client.listTools();
+                const tools = await client.listTools()
+                    .catch(error => {
+                        throw new Error(`MCPService: Could not list tools for ${i.name} MCP server at ${i.url}`, { cause: error });
+                    });
         
                 return tools.tools.map(t => new Tool(
                     t.name,
                     t.description,
                     t.inputSchema as JsonSchema,
-                    args => client.callTool({ name: t.name, arguments: args })
+                    args => client.callTool({ name: t.name, arguments: args as Record<string, unknown> })
                 ));
             })
-        );
+        ).then(results => {
+            results
+                .filter(r => r.status === 'rejected')
+                .forEach(r => console.error(r.reason));
+
+            return results
+                .filter(r => r.status === 'fulfilled')
+                .map(r => r.value);
+        });
 
         return tools.flat();
     }
