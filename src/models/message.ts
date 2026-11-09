@@ -3,6 +3,7 @@ import { Model, Schema, Types } from 'mongoose';
 import { RefSchema } from '@olegpolyakov/backend/db/schemas';
 import type { Ref } from '@olegpolyakov/core/objects/ref';
 
+// TODO Move to ai-core
 export type MessageRole = 'system' | 'user' | 'assistant';
 
 export type MessageData = {

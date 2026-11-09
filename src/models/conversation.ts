@@ -2,6 +2,7 @@ import { Model, Schema, Types } from 'mongoose';
 
 import type { MessageData, MessageDocument } from './message';
 
+// TODO Move to ai-core
 export type ConversationData = {
     id: string;
     userId: string;

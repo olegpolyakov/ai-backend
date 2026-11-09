@@ -1,5 +1,6 @@
 import { Model, Schema, Types } from 'mongoose';
 
+// TODO Move to ai-core
 export type MemoryType = 'preference' | 'goal' | 'project' | 'skill' | 'fact' | 'relationship';
 
 export type MemoryData = {

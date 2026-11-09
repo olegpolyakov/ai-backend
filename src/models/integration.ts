@@ -1,5 +1,6 @@
 import { Model, Schema, Types } from 'mongoose';
 
+// TODO Move to ai-core
 export type IntegrationType = 'mcp';
 
 export type IntegrationData = {
