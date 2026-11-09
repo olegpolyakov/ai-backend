@@ -1,4 +1,4 @@
-import type { Message, MessageContent, ResponseMessage, TextContent } from '@olegpolyakov/backend/features/ai';
+import type { Message, MessageContent, ResponseMessage, TextContent } from '@olegpolyakov/ai-core';
 import { BadRequestError } from '@olegpolyakov/backend/server';
 
 import type { MessageDocument } from '@/models';

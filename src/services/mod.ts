@@ -1,4 +1,4 @@
-import { OllamaClient, OpenAIClient } from '@olegpolyakov/backend/features/ai';
+import { OllamaClient, OpenAIClient } from '@olegpolyakov/ai-core';
 import { EmbedService, OpenAIEmbedClient } from '@olegpolyakov/backend/features/embed';
 
 import type { Models } from '@/models';

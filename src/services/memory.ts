@@ -1,6 +1,6 @@
 import { QueryFilter } from 'mongoose';
 
-import type { AIClient } from '@olegpolyakov/backend/features/ai';
+import type { AIClient } from '@olegpolyakov/ai-core';
 import type { EmbedService } from '@olegpolyakov/backend/features/embed';
 import { withTimeout } from '@olegpolyakov/backend/utils/timeout';
 import { array, integer, JsonSchema, object, string } from '@olegpolyakov/core/utils/schema';

@@ -1,4 +1,4 @@
-import type { Message } from '@olegpolyakov/backend/features/ai';
+import type { Message } from '@olegpolyakov/ai-core';
 import { EntityEvent } from '@olegpolyakov/core/entities/entity';
 
 import type { MessageDocument, Models } from '@/models';

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AIClient, Message } from '@olegpolyakov/backend/features/ai';
+import type { AIClient, Message } from '@olegpolyakov/ai-core';
 import { BadRequestError } from '@olegpolyakov/backend/server';
 
 import { AIService } from '@/services';

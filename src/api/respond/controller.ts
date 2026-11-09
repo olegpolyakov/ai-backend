@@ -1,7 +1,6 @@
-import type { Request, Response } from 'express';
-
-import type { FileContent, ImageContent, Message } from '@olegpolyakov/backend/features/ai';
+import type { FileContent, ImageContent, Message } from '@olegpolyakov/ai-core';
 import type { UploadedFile } from '@olegpolyakov/backend/features/upload';
+import type { Request, Response } from '@olegpolyakov/backend/server';
 import type { EntityRef } from '@olegpolyakov/core/objects/ref';
 import type { JsonSchema } from '@olegpolyakov/core/utils/schema';
 import { isArray, isString } from '@olegpolyakov/core/utils/types';

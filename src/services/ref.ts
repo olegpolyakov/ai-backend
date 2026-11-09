@@ -1,4 +1,4 @@
-import type { FileContent, ImageContent, MessageContent } from '@olegpolyakov/backend/features/ai';
+import type { FileContent, ImageContent, MessageContent } from '@olegpolyakov/ai-core';
 import { FileService } from '@olegpolyakov/backend/features/files';
 import { isEntityRef, type Ref } from '@olegpolyakov/core/objects/ref';
 

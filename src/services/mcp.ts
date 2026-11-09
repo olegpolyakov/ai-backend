@@ -1,6 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
-import { Tool } from '@olegpolyakov/backend/features/ai';
+import { Tool } from '@olegpolyakov/ai-core';
 import type { JsonSchema } from '@olegpolyakov/core/utils/schema';
 
 import { IntegrationModel } from '@/models';

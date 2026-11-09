@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AIClient } from '@olegpolyakov/backend/features/ai';
+import type { AIClient } from '@olegpolyakov/ai-core';
 import type { EmbedService } from '@olegpolyakov/backend/features/embed';
 import { useDb } from '@olegpolyakov/backend/test/mocks/db';
 import { useModel } from '@olegpolyakov/backend/test/mocks/models';

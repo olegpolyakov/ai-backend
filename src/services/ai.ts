@@ -1,4 +1,4 @@
-import type { AIClient, Message, RespondOptions, Response } from '@olegpolyakov/backend/features/ai';
+import type { AIClient, Message, RespondOptions, Response } from '@olegpolyakov/ai-core';
 import { BadRequestError } from '@olegpolyakov/backend/server';
 
 export default class AIService {
