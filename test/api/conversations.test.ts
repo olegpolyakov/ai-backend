@@ -1,7 +1,6 @@
 import supertest from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { NotFoundError } from '@olegpolyakov/backend/server';
 import { useDb } from '@olegpolyakov/backend/test/mocks/db';
 import { useModel } from '@olegpolyakov/backend/test/mocks/models';
 import { useServer } from '@olegpolyakov/backend/test/mocks/server';
@@ -30,21 +29,22 @@ describe('Conversations API', () => {
     const Conversation = useModel(db, 'Conversation', ConversationSchema, { beforeEach: true });
     const Message = useModel(db, 'Message', MessageSchema, { beforeEach: true });
     const chatService = {
-        sendMessage: vi.fn<Context['services']['Chat']['sendMessage']>()
+        reply: vi.fn<Context['services']['Chat']['reply']>()
     };
-    const fileService = {
-        accessToken: undefined as string | undefined
+    const memoryService = {
+        extractMemories: vi.fn<Context['services']['Memory']['extractMemories']>()
     };
     const context = {
         models: { Conversation, Message },
-        services: { Chat: chatService, File: fileService }
+        services: { Chat: chatService, Memory: memoryService }
     } as unknown as Context;
     const server = useServer({ host: HOST, port: PORT, userId: USER_ID }, router(context));
     const agent = supertest.agent(server);
 
     beforeEach(() => {
-        chatService.sendMessage.mockReset();
-        fileService.accessToken = undefined;
+        chatService.reply.mockReset();
+        memoryService.extractMemories.mockReset();
+        memoryService.extractMemories.mockResolvedValue([]);
     });
 
     afterEach(() => {
@@ -86,6 +86,42 @@ describe('Conversations API', () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.body.data[0].unreadMessagesCount).toBe(2);
+        });
+
+        it('counts only assistant messages created after the conversation was viewed', async () => {
+            const conversation = await Conversation.create({
+                userId: USER_ID,
+                title: 'Conversation',
+                viewedAt: new Date('2026-01-02T00:00:00.000Z')
+            });
+            await Message.create([
+                { conversationId: conversation.id, role: 'assistant', content: 'Seen', createdAt: new Date('2026-01-01T00:00:00.000Z') },
+                { conversationId: conversation.id, role: 'assistant', content: 'Unseen', createdAt: new Date('2026-01-03T00:00:00.000Z') }
+            ]);
+
+            const res = await agent.get('/');
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body.data[0].unreadMessagesCount).toBe(1);
+        });
+
+        it('includes the last message of each conversation', async () => {
+            const conversation = await Conversation.create({
+                userId: USER_ID,
+                title: 'Conversation'
+            });
+            await Message.create([
+                { conversationId: conversation.id, role: 'user', content: 'First', createdAt: new Date('2026-01-01T00:00:00.000Z') },
+                { conversationId: conversation.id, role: 'assistant', content: 'Last', createdAt: new Date('2026-01-02T00:00:00.000Z') }
+            ]);
+
+            const res = await agent.get('/');
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body.data[0].lastMessage).toEqual({
+                content: 'Last',
+                createdAt: '2026-01-02T00:00:00.000Z'
+            });
         });
     });
 
@@ -144,7 +180,20 @@ describe('Conversations API', () => {
             const res = await agent.patch(`/${conversation.id}`).send({});
 
             expect(res.statusCode).toBe(400);
-            expect(res.body).toEqual({ ok: false, message: 'No fields to update' });
+            expect(res.body).toEqual({ error: 'No fields to update' });
+        });
+
+        it('does not update another user’s conversation', async () => {
+            const conversation = await Conversation.create({
+                userId: OTHER_USER_ID,
+                title: 'Conversation'
+            });
+
+            const res = await agent.patch(`/${conversation.id}`).send({ title: 'Hijacked' });
+
+            expect(res.statusCode).toBe(404);
+            expect(res.body).toEqual({ error: 'Conversation not found' });
+            expect((await Conversation.findById(conversation.id))?.title).toBe('Conversation');
         });
     });
 
@@ -222,29 +271,45 @@ describe('Conversations API', () => {
     });
 
     describe('POST /conversations/:conversationId/messages', () => {
-        it('sends a message through the chat service', async () => {
+        it('stores the user message, replies through the chat service and stores the reply', async () => {
             const conversation = await Conversation.create({
                 userId: USER_ID,
-                title: 'Conversation'
+                title: 'Conversation',
+                model: 'test-model'
             });
-            const message = {
+            const reply = {
                 role: 'assistant' as MessageRole,
                 content: 'Hello!'
             };
-            chatService.sendMessage.mockImplementation(async () => {
-                expect(fileService.accessToken).toBe('test-token');
-
-                return message;
-            });
+            chatService.reply.mockResolvedValue(reply as Awaited<ReturnType<Context['services']['Chat']['reply']>>);
 
             const res = await agent
                 .post(`/${conversation.id}/messages`)
                 .send({ content: 'Hi!' });
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({ ok: true, data: message });
-            expect(fileService.accessToken).toBeUndefined();
-            expect(chatService.sendMessage).toHaveBeenCalledWith(USER_ID, conversation.id, 'Hi!', undefined);
+            expect(res.body).toEqual({ ok: true, data: reply });
+
+            const messages = await Message
+                .find({ conversationId: conversation.id })
+                .sort({ createdAt: 1 });
+
+            expect(messages.map(({ role, content }) => ({ role, content }))).toEqual([
+                { role: 'user', content: 'Hi!' },
+                { role: 'assistant', content: 'Hello!' }
+            ]);
+            expect(chatService.reply).toHaveBeenCalledWith({
+                userId: USER_ID,
+                accessToken: 'test-token',
+                messages: [expect.objectContaining({ role: 'user', content: 'Hi!' })],
+                model: 'test-model'
+            });
+            expect(memoryService.extractMemories).toHaveBeenCalledWith(
+                USER_ID,
+                'Hi!',
+                'test-model',
+                [messages[0].id, messages[1].id]
+            );
         });
 
         it('passes file references to the chat service without requiring text content', async () => {
@@ -252,17 +317,71 @@ describe('Conversations API', () => {
                 userId: USER_ID,
                 title: 'Conversation'
             });
-            chatService.sendMessage.mockResolvedValue({
+            chatService.reply.mockResolvedValue({
                 role: 'assistant',
                 content: 'I can see the image.'
-            });
+            } as Awaited<ReturnType<Context['services']['Chat']['reply']>>);
 
             const res = await agent
                 .post(`/${conversation.id}/messages`)
                 .send({ refs: [FILE_REF] });
 
             expect(res.statusCode).toBe(200);
-            expect(chatService.sendMessage).toHaveBeenCalledWith(USER_ID, conversation.id, undefined, [FILE_REF]);
+
+            const [{ messages }] = chatService.reply.mock.calls[0];
+
+            expect(messages).toHaveLength(1);
+            expect(messages[0]).toMatchObject({ role: 'user', refs: [FILE_REF] });
+        });
+
+        it('sends the most recent history in chronological order', async () => {
+            const conversation = await Conversation.create({
+                userId: USER_ID,
+                title: 'Conversation'
+            });
+            await Message.create(Array.from({ length: 30 }, (_, index) => ({
+                conversationId: conversation.id,
+                role: (index % 2 ? 'assistant' : 'user') as MessageRole,
+                content: `Message ${index}`,
+                createdAt: new Date(Date.UTC(2026, 0, 1, 0, index))
+            })));
+            chatService.reply.mockResolvedValue({
+                role: 'assistant',
+                content: 'Reply'
+            } as Awaited<ReturnType<Context['services']['Chat']['reply']>>);
+
+            const res = await agent
+                .post(`/${conversation.id}/messages`)
+                .send({ content: 'Latest message' });
+
+            expect(res.statusCode).toBe(200);
+
+            const [{ messages }] = chatService.reply.mock.calls[0];
+
+            expect(messages).toHaveLength(25);
+            expect(messages[0].content).toBe('Message 6');
+            expect(messages.at(-1)?.content).toBe('Latest message');
+        });
+
+        it('responds even when memory extraction fails', async () => {
+            const conversation = await Conversation.create({
+                userId: USER_ID,
+                title: 'Conversation'
+            });
+            const reply = {
+                role: 'assistant' as MessageRole,
+                content: 'Hello!'
+            };
+            chatService.reply.mockResolvedValue(reply as Awaited<ReturnType<Context['services']['Chat']['reply']>>);
+            memoryService.extractMemories.mockRejectedValue(new Error('Extraction failed'));
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+
+            const res = await agent
+                .post(`/${conversation.id}/messages`)
+                .send({ content: 'Hi!' });
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({ ok: true, data: reply });
         });
 
         it('rejects a message without content or references', async () => {
@@ -277,23 +396,24 @@ describe('Conversations API', () => {
 
             expect(res.statusCode).toBe(400);
             expect(res.body).toEqual({ error: 'The message can not be empty' });
-            expect(chatService.sendMessage).not.toHaveBeenCalled();
+            expect(chatService.reply).not.toHaveBeenCalled();
+            expect(await Message.countDocuments({ conversationId: conversation.id })).toBe(0);
         });
 
-        it('returns 404 when the chat service cannot find the conversation', async () => {
+        it('does not send messages to another user’s conversation', async () => {
             const conversation = await Conversation.create({
-                userId: USER_ID,
-                title: 'Conversation'
+                userId: OTHER_USER_ID,
+                title: 'Another user’s conversation'
             });
-            chatService.sendMessage.mockRejectedValue(new NotFoundError('Conversation not found'));
 
             const res = await agent
                 .post(`/${conversation.id}/messages`)
                 .send({ content: 'Hello!' });
 
             expect(res.statusCode).toBe(404);
-            expect(res.body).toEqual({ ok: false, message: 'Conversation not found' });
-            expect(fileService.accessToken).toBeUndefined();
+            expect(res.body).toEqual({ error: 'Conversation not found' });
+            expect(chatService.reply).not.toHaveBeenCalled();
+            expect(await Message.countDocuments({ conversationId: conversation.id })).toBe(0);
         });
     });
 
@@ -325,17 +445,38 @@ describe('Conversations API', () => {
                 title: 'Conversation'
             });
             const message = await Message.create({
-                conversationId: conversation.id, 
+                conversationId: conversation.id,
                 role: 'user',
                 content: 'Existing content'
             });
 
             const res = await agent
                 .patch(`/${conversation.id}/messages/${message.id}`)
-                .send({ content: '   ' });
+                .send({ content: '' });
 
             expect(res.statusCode).toBe(400);
-            expect(res.body).toEqual({ ok: false, message: 'Content is required' });
+            expect(res.body).toEqual({ error: 'Content is required' });
+            expect((await Message.findById(message.id))?.content).toBe('Existing content');
+        });
+
+        it('does not update messages in another user’s conversation', async () => {
+            const conversation = await Conversation.create({
+                userId: OTHER_USER_ID,
+                title: 'Conversation'
+            });
+            const message = await Message.create({
+                conversationId: conversation.id,
+                role: 'user',
+                content: 'Original content'
+            });
+
+            const res = await agent
+                .patch(`/${conversation.id}/messages/${message.id}`)
+                .send({ content: 'Hijacked' });
+
+            expect(res.statusCode).toBe(404);
+            expect(res.body).toEqual({ error: 'Conversation not found' });
+            expect((await Message.findById(message.id))?.content).toBe('Original content');
         });
     });
 
@@ -356,6 +497,24 @@ describe('Conversations API', () => {
             expect(res.statusCode).toBe(200);
             expect(res.body).toEqual({ ok: true, data: { id: message.id } });
             await expect(Message.findById(message.id)).resolves.toBeNull();
+        });
+
+        it('does not delete messages from another user’s conversation', async () => {
+            const conversation = await Conversation.create({
+                userId: OTHER_USER_ID,
+                title: 'Conversation'
+            });
+            const message = await Message.create({
+                conversationId: conversation.id,
+                role: 'user',
+                content: 'Keep this message'
+            });
+
+            const res = await agent.delete(`/${conversation.id}/messages/${message.id}`);
+
+            expect(res.statusCode).toBe(404);
+            expect(res.body).toEqual({ error: 'Conversation not found' });
+            expect(await Message.findById(message.id)).not.toBeNull();
         });
     });
 });
