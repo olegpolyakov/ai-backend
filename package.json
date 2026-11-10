@@ -11,14 +11,14 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "preversion": "npm update --package-lock-only --workspaces=false && git add package-lock.json",
-        "postversion": "git tag $npm_package_version && git push origin $npm_package_version"
+        "postversion": "git push origin v$npm_package_version"
     },
     "dependencies": {
         "@anthropic-ai/sdk": "^0.127.0",
         "@modelcontextprotocol/client": "^2.4.0",
         "@olegpolyakov/ai-core": "^0.1.0",
         "@olegpolyakov/core": "^0.11.0",
-        "@olegpolyakov/backend": "^0.18.0",
+        "@olegpolyakov/backend": "^0.19.0",
         "ollama": "^0.6.3",
         "openai": "^7.10.0",
         "tsx": "^4.21.0"
